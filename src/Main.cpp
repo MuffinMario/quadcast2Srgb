@@ -5,12 +5,14 @@
 #include <cstdint>
 #include <string>
 #include <sstream>
+#include <fstream>
 #include <array>
 #include <iomanip>
 #include <vector>
 #include <memory>
 #include <algorithm>
 #include <map>
+#include <filesystem>
 
 #define DEBUG 1
 
@@ -44,7 +46,7 @@ using namespace std::string_literals;
     8 9  
     meaning we have a dimension of 12x9 available.
     The packets are sent in 20 LED chunks though, so each chunk does not actually align with a specific column beginning/end
-    
+
 */
 using String = std::string;
 using StringStream = std::stringstream;
@@ -59,6 +61,10 @@ using DynamicContainer = std::vector<TType>;
 using DynamicByteContainer = DynamicContainer<uint8_t>;
 template <typename TKey, typename TVal>
 using Map = std::map<TKey, TVal>;
+using IFStream = std::ifstream;
+using OFStream = std::ofstream;
+using FS = std::filesystem::filesystem_error;
+using Path = std::filesystem::path;
 
 #pragma pack(push, 1)
 struct SRGBColor
@@ -390,9 +396,192 @@ public:
     }
 };
 
+constexpr uint32_t g_VIDEO_WIDTH = 12;
+constexpr uint32_t g_VIDEO_HEIGHT = 9;
+constexpr uint32_t g_LED_COUNT = g_VIDEO_WIDTH * g_VIDEO_HEIGHT; // 108
+
+
+// Does two things:
+// turn row-major frame data into column-major
+// flip every odd column because of snake column indicing
+DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> AlignIndicesOnVideo(const DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> &p_frames)
+{
+    DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> alignedFrames;
+    alignedFrames.reserve(p_frames.size());
+
+    for (const auto &frame : p_frames)
+    {
+        StaticArray<SRGBColor, g_LED_COUNT> alignedFrame{};
+        for (uint32_t col = 0; col < g_VIDEO_WIDTH; ++col)
+        {
+            for (uint32_t row = 0; row < g_VIDEO_HEIGHT; ++row)
+            {
+                // Logical index: row-major input
+                uint32_t srcIndex = row * g_VIDEO_WIDTH + col;
+
+                // Physical index: column-major, odd columns reversed
+                uint32_t physicalRow = (col % 2 == 1) ? row : (g_VIDEO_HEIGHT - 1 - row);
+                uint32_t dstIndex    = col * g_VIDEO_HEIGHT + physicalRow;
+
+                alignedFrame[dstIndex] = frame[srcIndex];
+            }
+        }
+        alignedFrames.push_back(alignedFrame);
+    }
+    return alignedFrames;
+} 
+
+DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> ProcessGreyscaleVideo(String p_path,size_t p_maxFileSize) {
+    // open the file
+    IFStream file(p_path, std::ios::binary);
+    if (!file)
+    {
+        throw std::runtime_error("Failed to open video file: " + p_path);
+    }
+    // Get file size
+    file.seekg(0, std::ios::end);
+    size_t fileSize = file.tellg();
+    if (fileSize == 0 || fileSize > p_maxFileSize)
+    {
+        throw std::runtime_error("Invalid video file size: " + std::to_string(fileSize));
+    }
+    // Warn on file size not being a multiple of LED_COUNT, as this means the last frame will be incomplete and thus discarded
+    uint32_t frameCount = fileSize / g_LED_COUNT;
+    if (fileSize % g_LED_COUNT != 0)
+    {
+        std::cerr << "Warning: video file size (" << fileSize << " bytes) is not a multiple of LED count (" << g_LED_COUNT << " bytes). The last " << (fileSize % g_LED_COUNT) << " bytes will be discarded." << std::endl;
+    }
+    file.seekg(0, std::ios::beg);
+
+    // Read frames
+    DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> frames(frameCount);
+
+    for(uint32_t i = 0; i < frameCount; i++)
+    {
+        StaticByteArray<g_LED_COUNT> frameData{};
+        file.read(reinterpret_cast<char *>(frameData.data()), frameData.size());
+        // Convert greyscale byte data to SRGBColor, assuming the input is 8-bit greyscale where each byte represents the intensity for R, G, and B equally
+        StaticArray<SRGBColor,g_LED_COUNT> frame{};
+        for (size_t j = 0; j < g_LED_COUNT; ++j)
+        {
+            uint8_t intensity = frameData[j];
+            frame[j] = {intensity, intensity, intensity};
+        }
+        if (file.gcount() == static_cast<std::streamsize>(frameData.size()))
+        {
+            frames.push_back(frame);
+        }
+        else
+        {
+            if (!file.eof())
+            {
+                throw std::runtime_error("Error reading video file: " + p_path);
+            }
+            break; // EOF reached
+        }
+    }
+    file.close();
+    return AlignIndicesOnVideo(frames);    
+}
+
+constexpr size_t g_RGB_FRAME_SIZE = g_LED_COUNT * sizeof(SRGBColor); // 3 bytes per pixel (R, G, B — 8 bits each)
+DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> ProcessRGBVideo(String p_path, size_t p_maxFileSize)
+{
+    IFStream file(p_path, std::ios::binary);
+    if (!file)
+    {
+        throw std::runtime_error("Failed to open video file: " + p_path);
+    }
+    file.seekg(0, std::ios::end);
+    size_t fileSize = file.tellg();
+    if (fileSize == 0 || fileSize > p_maxFileSize)
+    {
+        throw std::runtime_error("Invalid video file size: " + std::to_string(fileSize));
+    }
+    if (fileSize % g_RGB_FRAME_SIZE != 0)
+    {
+        std::cerr << "Warning: RGB video file size (" << fileSize << " bytes) is not a multiple of frame size ("
+                  << g_RGB_FRAME_SIZE << " bytes). The last " << (fileSize % g_RGB_FRAME_SIZE) << " bytes will be discarded." << std::endl;
+    }
+    uint32_t frameCount = static_cast<uint32_t>(fileSize / g_RGB_FRAME_SIZE);
+    file.seekg(0, std::ios::beg);
+
+    DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> frames;
+    frames.reserve(frameCount);
+
+    for (uint32_t i = 0; i < frameCount; ++i)
+    {
+        StaticArray<SRGBColor, g_LED_COUNT> frame{};
+        file.read(reinterpret_cast<char *>(frame.data()), g_RGB_FRAME_SIZE);
+
+        if (file.gcount() == static_cast<std::streamsize>(g_RGB_FRAME_SIZE))
+        {
+            frames.push_back(frame);
+        }
+        else
+        {
+            if (!file.eof())
+            {
+                throw std::runtime_error("Error reading RGB video file: " + p_path);
+            }
+            break; // incomplete last frame — discard
+        }
+    }
+    file.close();
+    return AlignIndicesOnVideo(frames);
+}
+
+// Create dummy video that just moves a white column from left to right, for testing purposes
+DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> CreateDummyVideoSlide(uint32_t p_frameCount)
+{
+    DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> frames;
+    frames.reserve(p_frameCount);
+    for (uint32_t i = 0; i < p_frameCount; ++i)
+    {
+        // Determine which column is lit: maps frame index linearly across all columns
+        uint32_t activeColumn = (i * g_VIDEO_WIDTH) / p_frameCount;
+
+        StaticArray<SRGBColor, g_LED_COUNT> frame{};
+        frame.fill({0, 0, 0}); // all black
+
+        // Light up the entire active column (9 LEDs per column)
+        for (uint32_t row = 0; row < g_VIDEO_HEIGHT; ++row)
+        {
+            uint32_t ledIndex = activeColumn * g_VIDEO_HEIGHT + row;
+            frame[ledIndex] = {0xff, 0xff, 0xff};
+        }
+
+        frames.push_back(frame);
+    }
+    return AlignIndicesOnVideo(frames);
+}
+
+// Create dummy video that scans one pixel at a time left-to-right, top-to-bottom across the entire frame count
+DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> CreateDummyVideoPixelScan(uint32_t p_frameCount)
+{
+    DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> frames;
+    frames.reserve(p_frameCount);
+    for (uint32_t i = 0; i < p_frameCount; ++i)
+    {
+        // Map frame index to a pixel: left-to-right, top-to-bottom
+        // pixel index = (i * g_LED_COUNT) / p_frameCount
+        uint32_t pixelIndex = (i * g_LED_COUNT) / p_frameCount;
+        StaticArray<SRGBColor, g_LED_COUNT> frame{};
+        frame.fill({0, 0, 0}); // all black
+        // light up pixel at x/y in row-major order (video formats)
+        frame[pixelIndex] = {0xff, 0xff, 0xff};
+
+        frames.push_back(frame);
+    }
+    return AlignIndicesOnVideo(frames);
+}
+
 constexpr SUSBID g_QUADCAST2S_USB_ID = {0x03f0, 0x02b5};
 int main()
 {
+    auto greyscaleVideo = //CreateDummyVideoPixelScan(300);//
+                            ProcessRGBVideo("/home/muma/Working/Projects/Code/quadcast2Srgb/badapp/output.bin", 1024*1024*500); // max 500 mb
+
     // debug, ths will be extended
 
     std::cout << "Starting Quadcast 2S RGB Controller" << std::endl;
@@ -451,67 +640,55 @@ int main()
     // wait 500 ms
     std::this_thread::sleep_for(500ms);
 
-    // For 10 seconds send color change commands
-    StaticArray<SRGBColor,6> colors{{
-
-        {0x00, 0x7f, 0},
-        {0x7f, 0x00, 0},
-        {0x00, 0x00, 0x7f},
-        {0x00, 0x1f, 0},
-        {0x1f, 0x00, 0},
-        {0x00, 0x00, 0x1f}
-    }};
-    SRGBColor black{0x00, 0x00, 0x00};
-    std::chrono::steady_clock::time_point endTime = std::chrono::steady_clock::now() + 1200s;
-    while (std::chrono::steady_clock::now() < endTime)
+    for (int countdown = 5; countdown > 0; --countdown)
     {
-        // send for 1|6 (dummy empty) and 2|0~2|4 (full 20 RGB values) and 2|5 (8 RGB values))
-        UQuadcast2CommandPacket packet{};
-        packet.m_colorPacket.m_reportId = 0x44;
-        packet.m_colorPacket.m_devicePart = 1;
-        packet.m_colorPacket.m_subPartId = 6; // jesus shut up claude you dont need to comment everythig
-        /*std::cout << "Sending color change command to device part " << static_cast<int>(packet.m_colorPacket.m_devicePart)
-                  << " sub part " << packet.m_colorPacket.m_subPartId << std::endl;
-                  
-                  std::cout << "Waiting for response..." << std::endl;
-                  */
-        communicator.SendCommand(packet); // send the color change command to all devices
-        //hid_read_timeout(pDevice, buffer.data(), buffer.size(), TIMEOUT_READ); // read response, just to be sure the device is ready for the next command
-        // wiat 10 ms before sending the next command, otherwise the device might not be ready to receive it and we might get a timeout or an error
-
-        for (uint32_t i = 0; i < 6; i++)
-        {
-            std::this_thread::sleep_for(10ms); // wait a bit before sending the next command
-            UQuadcast2CommandPacket packet{};
-            packet.m_colorPacket.m_reportId = 0x44;
-            packet.m_colorPacket.m_devicePart = 2;
-            packet.m_colorPacket.m_subPartId = i;
-            size_t colorCount = (i < 5) ? 20 : 8; // 20 colors for subPartId 0~4, 8 colors for subPartId 5
-            uint32_t secondsOffset = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-            uint32_t colorIndex = (i+secondsOffset) % 6;
-            for (uint32_t j = 0; j < colorCount; j++)
-            {
-                uint32_t absoluteIndex = (i * 20) + j; // absolute index across all subPartIds
-                bool active = (absoluteIndex + secondsOffset)%108 == 0; // activate every 6th LED based on the color index, this will create a moving pattern across the LEDs
-                if(active)
-                    std::cout << "Activating LED " << absoluteIndex << " (subPartId=" << i << " colorIndex=" << colorIndex << ")" << std::endl;
-                    //j%2;
-                if(active)
-                    packet.m_colorPacket.m_color[j] = colors[0];
-                else 
-                    packet.m_colorPacket.m_color[j] = black;
-            }
-            /*
-            std::cout << "Sending color change command to device part " << static_cast<int>(packet.m_colorPacket.m_devicePart)
-                      << " sub part " << packet.m_colorPacket.m_subPartId << std::endl;
-                      */
-            communicator.SendCommand(packet); // send the color change command to all devices
-            //hid_read_timeout(pDevice, buffer.data(), buffer.size(), TIMEOUT_READ); // read response, just to be sure the device is ready for the next command
-        }
-        std::this_thread::sleep_for(50ms); // wait a bit before sending the next command
+        std::cout << countdown << "..." << std::endl;
+        std::this_thread::sleep_for(1s);
     }
 
-    return 0;
+    auto frameRate = 30; // fps
+    auto frameDuration = std::chrono::milliseconds(1000 / frameRate);
+
+    // print video information (frame count, frame rate, duration)
+    std::cout << "Video info: " << std::endl;
+    std::cout << "Frame count: " << greyscaleVideo.size() << std::endl;
+    std::cout << "Frame rate: " << frameRate << " fps" << std::endl;
+    std::cout << "Duration: " << (greyscaleVideo.size() / static_cast<double>(frameRate)) << " seconds" << std::endl;
+
+
+    for (const auto &frame : greyscaleVideo)
+    {
+        auto frameStart = std::chrono::steady_clock::now();
+
+        // Device part 1, subPartId 6: dummy trigger packet required before color data
+        UQuadcast2CommandPacket triggerPacket{};
+        triggerPacket.m_colorPacket.m_reportId  = 0x44;
+        triggerPacket.m_colorPacket.m_devicePart = 1;
+        triggerPacket.m_colorPacket.m_subPartId  = 6;
+        communicator.SendCommand(triggerPacket);
+
+        // Device part 2, subPartIds 0–5: 20 LEDs each (subPartId 5 only has 8 LEDs)
+        for (uint32_t subPart = 0; subPart < 6; ++subPart)
+        {
+            UQuadcast2CommandPacket colorPacket{};
+            colorPacket.m_colorPacket.m_reportId   = 0x44;
+            colorPacket.m_colorPacket.m_devicePart = 2;
+            colorPacket.m_colorPacket.m_subPartId  = subPart;
+
+            size_t colorCount = (subPart < 5) ? 20 : 8;
+            size_t ledOffset  = subPart * 20; // absolute LED index start for this chunk
+            for (size_t j = 0; j < colorCount; ++j)
+            {
+                colorPacket.m_colorPacket.m_color[j] = frame[ledOffset + j];
+            }
+            communicator.SendCommand(colorPacket);
+        }
+
+        // Pace to target frame rate
+        auto elapsed = std::chrono::steady_clock::now() - frameStart;
+        if (elapsed < frameDuration)
+            std::this_thread::sleep_for(frameDuration - elapsed);
+    }
 
     // Test, handshake
 
