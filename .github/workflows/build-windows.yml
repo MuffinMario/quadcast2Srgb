@@ -1,0 +1,62 @@
+name: Build Windows (MinGW)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows-mingw:
+    runs-on: windows-latest
+
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-mingw-dynamic
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MinGW (GCC)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-hidapi
+
+      - name: Configure CMake
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build \
+            -G "Ninja" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DENABLE_CLANG_TIDY=OFF \
+            -Dhidapi_DIR=/mingw64/lib/cmake/hidapi
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --config Release
+
+      - name: Collect artifact (exe + required DLLs)
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist
+          cp build/myproject.exe dist/
+          # Copy MinGW runtime and hidapi DLLs that the exe depends on
+          ldd build/myproject.exe \
+            | grep '/mingw64/' \
+            | awk '{print $3}' \
+            | xargs -I{} cp {} dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: myproject-windows-mingw
+          path: dist/
+          if-no-files-found: error

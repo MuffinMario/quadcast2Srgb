@@ -1,0 +1,9 @@
+namespace HyperX_QuadCast2S;
+
+// We only know of two packets
+
+table BasePacket {
+  packetType: uint8;
+}
+
+root_type BasePacket;
