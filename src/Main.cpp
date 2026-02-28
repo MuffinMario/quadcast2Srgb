@@ -52,6 +52,9 @@ using namespace std::string_literals;
     meaning we have a dimension of 12x9 available.
     The packets are sent in 20 LED chunks though, so each chunk does not actually align with a specific column beginning/end
 
+    There are two device interfaces that response to the what I assume to be the status request packet (0x10 0x01 0 0 0 0 0....)
+    However, when you communicate with both at the same time, the LEDs refuse to communicate, we restrict communication with only one interface per usb device
+    we split this logic by identifying the device via serial number (hidapi restrictions to not know the exact bus/port/interface ids? to my knowledge)
 */
 using String = std::string;
 using StringStream = std::stringstream;
@@ -223,6 +226,7 @@ public:
     {
         return SendCommand(p_commandPacket.m_rawData.data(), p_commandPacket.m_rawData.size());
     }
+    
     DynamicContainer<int> SendCommand(const uint8_t *p_pData, size_t p_size)
     {
         DynamicContainer<int> writeResults(m_devices.size(), -1);
