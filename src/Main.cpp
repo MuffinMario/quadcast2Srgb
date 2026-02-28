@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <cstring>
 #include <sstream>
 #include <fstream>
 #include <array>
@@ -14,8 +15,11 @@
 #include <map>
 #include <filesystem>
 #include <cmath>
+#include <optional>
 
-#define DEBUG 1
+bool g_verbosity = false;
+
+//#define DEBUG 1
 
 using namespace std::chrono_literals;
 using Thread = std::thread;
@@ -64,6 +68,8 @@ template <typename TKey, typename TVal>
 using Map = std::map<TKey, TVal>;
 template <typename TVal>
 using UniquePtr = std::unique_ptr<TVal>;
+template <typename TVal>
+using Option = std::optional<TVal>;
 
 using IFStream = std::ifstream;
 using OFStream = std::ofstream;
@@ -383,13 +389,25 @@ public:
         }
     };
 
-    static HIDDeviceContainer FindDevices(const SUSBID &p_usbId)
+    static HIDDeviceContainer FindDevices(const SUSBID &p_usbId,
+                                          Option<DynamicContainer<WString>> p_allowedSerials = std::nullopt)
     {
-        // auto pDevices = hid_enumerate(p_usbId.m_vendorId,p_usbId.m_productId);
         hid_device_info *pDevices = hid_enumerate(p_usbId.m_vendorId, p_usbId.m_productId);
         HIDDeviceContainer foundDevices;
         while (pDevices)
         {
+            // If a serial filter is provided, skip devices whose serial is not in the list
+            if (p_allowedSerials.has_value())
+            {
+                WString serial = pDevices->serial_number ? WString(pDevices->serial_number) : WString{};
+                const auto &allowed = p_allowedSerials.value();
+                if (std::find(allowed.begin(), allowed.end(), serial) == allowed.end())
+                {
+                    pDevices = pDevices->next;
+                    continue;
+                }
+            }
+
             hid_device *pDevice = hid_open_path(pDevices->path);
             if (pDevice)
             {
@@ -617,24 +635,34 @@ class CVideoCompletedEndCondition : public CEndCondition
 {
     size_t m_totalFrames;
     size_t m_renderedFrames = 0;
+    int64_t m_loopCount = 1;
+    int64_t m_currentLoopCount = 1;
 
 public:
-    explicit CVideoCompletedEndCondition(size_t p_totalFrames)
-        : m_totalFrames(p_totalFrames) {}
+    explicit CVideoCompletedEndCondition(size_t p_totalFrames, int64_t p_loopCount)
+        : m_totalFrames(p_totalFrames), m_loopCount(p_loopCount)
+    {
+    }
 
     bool IsMet() const override
     {
-        return m_renderedFrames >= m_totalFrames;
+        return m_currentLoopCount > m_loopCount && m_loopCount >= 0;
     }
 
     void Reset() override
     {
         m_renderedFrames = 0;
+        m_currentLoopCount = 1;
     }
 
     void NotifyFrameDisplayed() override
     {
         ++m_renderedFrames;
+        if (m_renderedFrames >= m_totalFrames)
+        {
+            m_renderedFrames = 0;
+            ++m_currentLoopCount;
+        }
     }
 };
 
@@ -845,6 +873,110 @@ public:
     }
 };
 
+// Pre-loaded frame buffer type shared across video displays
+using VideoFrameBuffer = DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>>;
+
+enum class EVideoFormat
+{
+    Rgb,
+    Greyscale
+};
+
+constexpr size_t g_VIDEO_MAX_FILE_SIZE_DEFAULT = 512ULL * 1024 * 1024; // 512 MB
+
+// Load a raw video file from disk into a VideoFrameBuffer, ready for use with CVideoDisplay.
+// p_path        : path to the raw binary video file
+// p_format      : EVideoFormat::Rgb (3 bytes/pixel) or EVideoFormat::Greyscale (1 byte/pixel)
+// p_maxFileSize : maximum allowed file size in bytes (default 512 MB)
+VideoFrameBuffer LoadVideoBuffer(const String &p_path, EVideoFormat p_format,
+                                 size_t p_maxFileSize = g_VIDEO_MAX_FILE_SIZE_DEFAULT)
+{
+    switch (p_format)
+    {
+    case EVideoFormat::Rgb:
+        return ProcessRGBVideo(p_path, p_maxFileSize);
+    case EVideoFormat::Greyscale:
+        return ProcessGreyscaleVideo(p_path, p_maxFileSize);
+    default:
+        throw std::invalid_argument("Unknown video format");
+    }
+}
+
+class CVideoDisplay : public CQC2SDisplay
+{
+    VideoFrameBuffer m_frames;
+    uint32_t m_fps;
+    size_t m_currentFrame = 0;
+
+public:
+    CVideoDisplay(VideoFrameBuffer p_frames, uint32_t p_fps, String p_name,
+                  UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay = "")
+        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
+          m_frames(std::move(p_frames)), m_fps(p_fps) {}
+
+    bool Initialize(CQuadcast2SCommunicator & /*p_communicator*/) override
+    {
+        m_currentFrame = 0;
+        return !m_frames.empty();
+    }
+
+    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    {
+        if (m_frames.empty())
+            return false;
+
+        auto frameStart = std::chrono::steady_clock::now();
+        auto frameDuration = std::chrono::milliseconds(1000 / m_fps);
+
+        const auto &frame = m_frames[m_currentFrame];
+
+        UQuadcast2CommandPacket triggerPacket{};
+        triggerPacket.m_colorPacket.m_reportId = 0x44;
+        triggerPacket.m_colorPacket.m_devicePart = 1;
+        triggerPacket.m_colorPacket.m_subPartId = 6;
+        p_communicator.SendCommand(triggerPacket);
+
+        UQuadcast2CommandPacket colorPacket{}; // 64 bit aligned
+        colorPacket.m_colorPacket.m_reportId = 0x44;
+        colorPacket.m_colorPacket.m_devicePart = 2;
+        for (uint32_t subPart = 0; subPart < 6; ++subPart)
+        {
+            size_t colorCount = (subPart < 5) ? 20 : 8;
+            size_t ledOffset = subPart * 20;
+
+            colorPacket.m_colorPacket.m_subPartId = subPart;
+
+            /*for (size_t j = 0; j < colorCount; ++j)
+                colorPacket.m_colorPacket.m_color[j] = frame[ledOffset + j];*/
+            // write directly to memory, data is aligned/prepared beforehand, todo do this for the other displays too...
+            std::memcpy(
+                colorPacket.m_colorPacket.m_color.data(),
+                &frame[ledOffset],
+                colorCount * sizeof(SRGBColor));
+            // zero fill the remaining leds, just in case
+            if (colorCount < 20)
+            {
+                std::memset(
+                    colorPacket.m_colorPacket.m_color.data() + colorCount, // +colorcount * rgbcolor struct
+                    0,
+                    (20 - colorCount) * sizeof(SRGBColor));
+            }
+
+            p_communicator.SendCommand(colorPacket);
+        }
+
+        // advance frame, looping when end of video is reached, end condition is decided outside...
+        m_currentFrame = (m_currentFrame + 1) % m_frames.size();
+
+        // delta wait to align to framerate
+        auto elapsed = std::chrono::steady_clock::now() - frameStart;
+        if (elapsed < frameDuration)
+            std::this_thread::sleep_for(frameDuration - elapsed);
+
+        return true;
+    }
+};
+
 class CMultiDisplay : public CQC2SDisplay
 {
     DynamicContainer<UniquePtr<CQC2SDisplay>> m_displays;
@@ -945,6 +1077,25 @@ public:
 
 constexpr SUSBID g_QUADCAST2S_USB_ID = {0x03f0, 0x02b5};
 
+static Option<SRGBColor> ParseHexColor(String p_colorStr)
+{
+    if (!p_colorStr.empty() && p_colorStr[0] == '#')
+        p_colorStr = p_colorStr.substr(1);
+    if (p_colorStr.size() != 6)
+        return std::nullopt;
+    try
+    {
+        return SRGBColor{
+            static_cast<uint8_t>(std::stoul(p_colorStr.substr(0, 2), nullptr, 16)),
+            static_cast<uint8_t>(std::stoul(p_colorStr.substr(2, 2), nullptr, 16)),
+            static_cast<uint8_t>(std::stoul(p_colorStr.substr(4, 2), nullptr, 16))};
+    }
+    catch (const std::exception &)
+    {
+        return std::nullopt;
+    }
+}
+
 class CQC2SDisplayFactory
 {
 public:
@@ -960,33 +1111,37 @@ public:
     {
         return std::make_unique<CMultiDisplay>(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
     }
+    static UniquePtr<CQC2SDisplay> CreateVideoDisplay(VideoFrameBuffer p_frames, uint32_t p_fps = 30, String p_name = "video", UniquePtr<CEndCondition> p_pEndCondition = nullptr, String p_nextDisplay = "")
+    {
+        return std::make_unique<CVideoDisplay>(std::move(p_frames), p_fps, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
+    }
 
     static UniquePtr<CQC2SDisplay> CreateFromArgs(int p_argc, char *p_pArgv[])
     {
         // default settings
         String displayType = "solid";
-        String videoPath = "";
-        SRGBColor color{0xff, 0xff, 0xff};
+        SRGBColor color = ParseHexColor("#290066").value();
         SCubicBezier bezier = SCubicBezier::EaseInOut();
-        float pulseSpeed = 0.05f;
+        float pulseSpeed = 0.025f;
+        String videoPath = "";
+        uint32_t videoFramerate = 30;
+        EVideoFormat videoFormat = EVideoFormat::Rgb;
 
         for (int i = 1; i < p_argc; ++i)
         {
             String arg = p_pArgv[i];
+            std::wcout << WString(arg.begin(),arg.end()) << std::endl;
             if (arg == "--display" && i + 1 < p_argc)
             {
                 displayType = p_pArgv[++i];
             }
             else if (arg == "--color" && i + 1 < p_argc)
             {
-                String colorStr = p_pArgv[++i];
-                if (colorStr.size() == 6)
-                {
-                    // cppreference: std::invalid_argument std::out_of_range
-                    color.m_red = static_cast<uint8_t>(std::stoul(colorStr.substr(0, 2), nullptr, 16));
-                    color.m_green = static_cast<uint8_t>(std::stoul(colorStr.substr(2, 2), nullptr, 16));
-                    color.m_blue = static_cast<uint8_t>(std::stoul(colorStr.substr(4, 2), nullptr, 16));
-                }
+                auto parsed = ParseHexColor(p_pArgv[++i]);
+                if (parsed.has_value())
+                    color = parsed.value();
+                else
+                    std::cerr << "Invalid --color value. Expected 6-digit hex (e.g. ff00dd)." << std::endl;
             }
             else if (arg == "--pulse-speed" && i + 1 < p_argc)
             {
@@ -999,6 +1154,24 @@ public:
                 bezier.m_p2x = std::stof(p_pArgv[++i]);
                 bezier.m_p2y = std::stof(p_pArgv[++i]);
             }
+            else if (arg == "--video-path" && i + 1 < p_argc)
+            {
+                videoPath = p_pArgv[++i];
+            }
+            else if (arg == "--video-framerate" && i + 1 < p_argc)
+            {
+                videoFramerate = static_cast<uint32_t>(std::stoul(p_pArgv[++i])); // WIP make float
+            }
+            else if (arg == "--video-colors" && i + 1 < p_argc)
+            {
+                String fmt = p_pArgv[++i];
+                if (fmt == "greyscale" || fmt == "grayscale") // whatever one may address this as
+                    videoFormat = EVideoFormat::Greyscale;
+                else if (fmt == "rgb")
+                    videoFormat = EVideoFormat::Rgb;
+                else
+                    std::cerr << "Unknown --video-colors value '" << fmt << "'" << std::endl;
+            }
         }
 
         if (displayType == "solid")
@@ -1007,10 +1180,65 @@ public:
         if (displayType == "pulse" || displayType == "pulse-color")
             return CreatePulseColor(color, pulseSpeed, "pulse", nullptr, bezier);
 
-        std::cerr << "Unknown display type: " << displayType << ". Defaulting to solid white." << std::endl;
-        return CreateSolidColor({0xff, 0xff, 0xff}, "solid");
+        if (displayType == "video")
+        {
+            // check video path given
+            if (videoPath.empty())
+            {
+                std::cerr << "--display video requires --video-path <path>. Defaulting to default color." << std::endl;
+                return CreateSolidColor({0x29,0x00,0x66}, "solid");
+            }
+            // try to load the video and create the display
+            try
+            {
+                auto frames = LoadVideoBuffer(videoPath, videoFormat);
+                if (frames.empty())
+                {
+                    std::cerr << "Video file loaded but contains no frames: " << videoPath << ". Defaulting to default color." << std::endl;
+                    return CreateSolidColor({0x29,0x00,0x66}, "solid");
+                }
+                return CreateVideoDisplay(std::move(frames), videoFramerate, "video");
+            }
+            catch (const std::exception &e)
+            {
+                std::cerr << "Failed to load video file '" << videoPath << "': " << e.what() << ". Defaulting to default color." << std::endl;
+                return CreateSolidColor({0x29,0x00,0x66}, "solid");
+            }
+        }
+
+        std::cerr << "Unknown display type: " << displayType << ". Defaulting to default color." << std::endl;
+        return CreateSolidColor({0x29,0x00,0x66}, "solid");
     }
 };
+
+static Option<DynamicContainer<WString>> ParseSerialArgs(int p_argc, char *p_pArgv[])
+{
+    DynamicContainer<WString> serials;
+    for (int i = 1; i < p_argc; ++i)
+    {
+        if (String(p_pArgv[i]) == "--serial" && i + 1 < p_argc)
+        {
+            String raw = p_pArgv[++i];
+            serials.emplace_back(raw.begin(), raw.end());
+        }
+    }
+    if (serials.empty())
+        return std::nullopt;
+    return serials;
+}
+
+static bool ParseVerbose(int p_argc, char *p_pArgv[])
+{
+    for (int i = 1; i < p_argc; ++i)
+    {
+        if (String(p_pArgv[i]) == "--verbose")
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -1054,11 +1282,19 @@ int main(int argc, char *argv[])
 
     */
     // "finder" logic
+    const auto ALLOWED_SERIALS = ParseSerialArgs(argc, argv);
+    g_verbosity =
+#ifdef DEBUG
+        true;
+#else
+        ParseVerbose(argc, argv);
+#endif
+
     CUSBDeviceFinder finder;
     HIDDeviceContainer devices;
     do
     {
-        devices = finder.FindDevices(g_QUADCAST2S_USB_ID);
+        devices = finder.FindDevices(g_QUADCAST2S_USB_ID, ALLOWED_SERIALS);
     } while (devices.empty());
 
     CQuadcast2SCommunicator communicator(devices);
@@ -1069,24 +1305,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    UniquePtr<CQC2SDisplay> pDisplay =
-#ifdef DEBUG
-        // CQC2SDisplayFactory::CreateSolidColor(SRGBColor{0x18, 0x10, 0x50});
-        //  now i see why NGITY only has full color options for fading/pulsing colors
-        //  CQC2SDisplayFactory::CreatePulseColor(SRGBColor{0x19, 0x11, 0x52},0.025);
-        // CQC2SDisplayFactory::CreatePulseColor(SRGBColor{0x10, 0x10, 0xc5},0.025);
-        CQC2SDisplayFactory::CreateMultiDisplay("multi", nullptr, "solid1");
-    auto *pMultiDisplay = static_cast<CMultiDisplay *>(pDisplay.get());
-
-    pMultiDisplay->AddDisplay(
-        CQC2SDisplayFactory::CreateSolidColor({0x00, 0xff, 0xff}, "solid1", std::make_unique<CTimeEndCondition>(3s),"solid2"));
-    pMultiDisplay->AddDisplay(
-        CQC2SDisplayFactory::CreateSolidColor({0x3c, 0x10, 0xff}, "solid2", std::make_unique<CTimeEndCondition>(5s),"pulse1"));
-    pMultiDisplay->AddDisplay(
-        CQC2SDisplayFactory::CreatePulseColor({0x10, 0x10, 0xc5},0.025,"pulse1",nullptr));
-#else
-        CQC2SDisplayFactory::CreateFromArgs(argc, argv);
-#endif
+    UniquePtr<CQC2SDisplay> pDisplay = CQC2SDisplayFactory::CreateFromArgs(argc, argv);
 
     if (!pDisplay->Initialize(communicator))
         throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());

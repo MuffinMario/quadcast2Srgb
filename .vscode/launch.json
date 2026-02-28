@@ -8,8 +8,47 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/myproject",
-            "args": [],
+            "program": "${workspaceFolder}/build/qc2srgb",
+            "args": ["--verbose",
+                "--display","video",
+                "--video-path","/home/muma/Working/Projects/Code/quadcast2Srgb/badapp/stars.bin",
+                "--video-format","rgb",
+                "--video-framerate","1",
+            ],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake Build",
+            "sourceFileMap": {
+                "/mnt/894ab61c-871d-43b4-b97d-092fec1a49a5/home/muma/Working/Projects/Code/quadcast2Srgb": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "(gdb) Launch Pulse",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/qc2srgb",
+            "args": [
+                "--verbose",
+                "--display","pulse",
+                "--color","000050",
+                "--pulse-speed","0.025",
+                "--pulse-cubic-bezier","1",".01","0","1" // linear
+            ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],
