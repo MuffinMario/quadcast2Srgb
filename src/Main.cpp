@@ -41,9 +41,9 @@ using namespace std::string_literals;
     3 14 ...
     4 13
     5 12
-    6 11 
+    6 11
     7 10
-    8 9  
+    8 9
     meaning we have a dimension of 12x9 available.
     The packets are sent in 20 LED chunks though, so each chunk does not actually align with a specific column beginning/end
 
@@ -61,6 +61,9 @@ using DynamicContainer = std::vector<TType>;
 using DynamicByteContainer = DynamicContainer<uint8_t>;
 template <typename TKey, typename TVal>
 using Map = std::map<TKey, TVal>;
+template <typename TVal>
+using UniquePtr = std::unique_ptr<TVal>;
+
 using IFStream = std::ifstream;
 using OFStream = std::ofstream;
 using FS = std::filesystem::filesystem_error;
@@ -156,7 +159,7 @@ class CQuadcast2SCommunicator
         if (writeRes < 0)
         {
             std::cerr << "Failed to write to device: " << hid_error(p_device.get()) << " Removing device from list." << std::endl;
-            if(!RemoveDevice(p_device)) // remove the device from the list, it might have been disconnected
+            if (!RemoveDevice(p_device)) // remove the device from the list, it might have been disconnected
                 std::cerr << "Failed to remove device from list: " << hid_error(p_device.get()) << std::endl;
         }
         else if (writeRes != static_cast<int>(p_size))
@@ -165,6 +168,7 @@ class CQuadcast2SCommunicator
         }
         return writeRes;
     }
+
 public:
     CQuadcast2SCommunicator(const HIDDeviceContainer &p_devices)
         : m_devices(p_devices) {}
@@ -197,13 +201,14 @@ public:
 
         m_devices.erase(
             std::remove_if(m_devices.begin(), m_devices.end(),
-                [&targetSerial, &p_pDevice](const HIDDevicePtr &p_pDev) {
-                    hid_device_info *pInfo = hid_get_device_info(p_pDev.get());
-                    if (!pInfo)
-                        return true; // remove if we can't get info for comparison
-                    WString serial = WString(pInfo->serial_number);
-                    return (serial == targetSerial) && (p_pDev != p_pDevice);
-                }),
+                           [&targetSerial, &p_pDevice](const HIDDevicePtr &p_pDev)
+                           {
+                               hid_device_info *pInfo = hid_get_device_info(p_pDev.get());
+                               if (!pInfo)
+                                   return true; // remove if we can't get info for comparison
+                               WString serial = WString(pInfo->serial_number);
+                               return (serial == targetSerial) && (p_pDev != p_pDevice);
+                           }),
             m_devices.end());
     }
 
@@ -271,13 +276,13 @@ public:
             {
                 // Build handshake packet
                 UQuadcast2CommandPacket handshakePacket{};
-                handshakePacket.m_handshakePacket.m_reportId  = 0x10;
+                handshakePacket.m_handshakePacket.m_reportId = 0x10;
                 handshakePacket.m_handshakePacket.m_devicePart = 1;
-                handshakePacket.m_handshakePacket.m_subPartId  = 0;
+                handshakePacket.m_handshakePacket.m_subPartId = 0;
 
                 int writeRes = hid_write(pDev.get(),
-                    handshakePacket.m_rawData.data(),
-                    handshakePacket.m_rawData.size());
+                                         handshakePacket.m_rawData.data(),
+                                         handshakePacket.m_rawData.size());
 
                 if (writeRes < 0)
                 {
@@ -331,7 +336,9 @@ public:
             }
 
             if (pViable)
+            {
                 viableDevices.push_back(pViable);
+            }
             else
             {
 #if DEBUG
@@ -400,13 +407,12 @@ constexpr uint32_t g_VIDEO_WIDTH = 12;
 constexpr uint32_t g_VIDEO_HEIGHT = 9;
 constexpr uint32_t g_LED_COUNT = g_VIDEO_WIDTH * g_VIDEO_HEIGHT; // 108
 
-
 // Does two things:
 // turn row-major frame data into column-major
 // flip every odd column because of snake column indicing
-DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> AlignIndicesOnVideo(const DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> &p_frames)
+DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> AlignIndicesOnVideo(const DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> &p_frames)
 {
-    DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> alignedFrames;
+    DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> alignedFrames;
     alignedFrames.reserve(p_frames.size());
 
     for (const auto &frame : p_frames)
@@ -421,7 +427,7 @@ DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> AlignIndicesOnVideo(const D
 
                 // Physical index: column-major, odd columns reversed
                 uint32_t physicalRow = (col % 2 == 1) ? row : (g_VIDEO_HEIGHT - 1 - row);
-                uint32_t dstIndex    = col * g_VIDEO_HEIGHT + physicalRow;
+                uint32_t dstIndex = col * g_VIDEO_HEIGHT + physicalRow;
 
                 alignedFrame[dstIndex] = frame[srcIndex];
             }
@@ -429,9 +435,10 @@ DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> AlignIndicesOnVideo(const D
         alignedFrames.push_back(alignedFrame);
     }
     return alignedFrames;
-} 
+}
 
-DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> ProcessGreyscaleVideo(String p_path,size_t p_maxFileSize) {
+DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> ProcessGreyscaleVideo(String p_path, size_t p_maxFileSize)
+{
     // open the file
     IFStream file(p_path, std::ios::binary);
     if (!file)
@@ -454,14 +461,14 @@ DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> ProcessGreyscaleVideo(Strin
     file.seekg(0, std::ios::beg);
 
     // Read frames
-    DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> frames(frameCount);
+    DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> frames(frameCount);
 
-    for(uint32_t i = 0; i < frameCount; i++)
+    for (uint32_t i = 0; i < frameCount; i++)
     {
         StaticByteArray<g_LED_COUNT> frameData{};
         file.read(reinterpret_cast<char *>(frameData.data()), frameData.size());
         // Convert greyscale byte data to SRGBColor, assuming the input is 8-bit greyscale where each byte represents the intensity for R, G, and B equally
-        StaticArray<SRGBColor,g_LED_COUNT> frame{};
+        StaticArray<SRGBColor, g_LED_COUNT> frame{};
         for (size_t j = 0; j < g_LED_COUNT; ++j)
         {
             uint8_t intensity = frameData[j];
@@ -481,11 +488,11 @@ DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> ProcessGreyscaleVideo(Strin
         }
     }
     file.close();
-    return AlignIndicesOnVideo(frames);    
+    return AlignIndicesOnVideo(frames);
 }
 
 constexpr size_t g_RGB_FRAME_SIZE = g_LED_COUNT * sizeof(SRGBColor); // 3 bytes per pixel (R, G, B — 8 bits each)
-DynamicContainer<StaticArray<SRGBColor,g_LED_COUNT>> ProcessRGBVideo(String p_path, size_t p_maxFileSize)
+DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> ProcessRGBVideo(String p_path, size_t p_maxFileSize)
 {
     IFStream file(p_path, std::ios::binary);
     if (!file)
@@ -576,11 +583,405 @@ DynamicContainer<StaticArray<SRGBColor, g_LED_COUNT>> CreateDummyVideoPixelScan(
     return AlignIndicesOnVideo(frames);
 }
 
-constexpr SUSBID g_QUADCAST2S_USB_ID = {0x03f0, 0x02b5};
-int main()
+class CEndCondition
 {
-    auto greyscaleVideo = //CreateDummyVideoPixelScan(300);//
-                            ProcessRGBVideo("/home/muma/Working/Projects/Code/quadcast2Srgb/badapp/output.bin", 1024*1024*500); // max 500 mb
+public:
+    virtual ~CEndCondition() = default;
+    virtual bool IsMet() const = 0;
+    virtual void Reset() = 0;
+    virtual void NotifyFrameDisplayed() {}
+};
+
+class CTimeEndCondition : public CEndCondition
+{
+    std::chrono::steady_clock::time_point m_endTime;
+    std::chrono::milliseconds m_duration;
+
+public:
+    explicit CTimeEndCondition(std::chrono::milliseconds p_duration)
+        : m_duration(p_duration), m_endTime(std::chrono::steady_clock::now() + p_duration) {}
+
+    bool IsMet() const override
+    {
+        return std::chrono::steady_clock::now() >= m_endTime;
+    }
+
+    void Reset() override
+    {
+        m_endTime = std::chrono::steady_clock::now() + m_duration;
+    }
+};
+
+class CVideoCompletedEndCondition : public CEndCondition
+{
+    size_t m_totalFrames;
+    size_t m_renderedFrames = 0;
+
+public:
+    explicit CVideoCompletedEndCondition(size_t p_totalFrames)
+        : m_totalFrames(p_totalFrames) {}
+
+    bool IsMet() const override
+    {
+        return m_renderedFrames >= m_totalFrames;
+    }
+
+    void Reset() override
+    {
+        m_renderedFrames = 0;
+    }
+
+    void NotifyFrameDisplayed() override
+    {
+        ++m_renderedFrames;
+    }
+};
+
+class CQC2SDisplay
+{
+protected:
+    String m_name;
+    UniquePtr<CEndCondition> m_pEndCondition;
+
+public:
+    CQC2SDisplay(String p_name, UniquePtr<CEndCondition> p_pEndCondition)
+        : m_name(std::move(p_name)), m_pEndCondition(std::move(p_pEndCondition))
+    {
+    }
+    virtual ~CQC2SDisplay() = default;
+
+    // Called once before displaying starts; return false to abort
+    virtual bool Initialize(CQuadcast2SCommunicator &p_communicator) { return true; }
+
+    // Called once per frame; return false to stop displaying
+    virtual bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) = 0;
+
+    // Called once after displaying ends or is aborted
+    virtual void Shutdown(CQuadcast2SCommunicator &p_communicator) {}
+
+    virtual String GetName() const { return m_name; }
+
+    virtual void Display(CQuadcast2SCommunicator &p_communicator)
+    {
+        // check for end condition
+        if (m_pEndCondition.get())
+        {
+            do
+            {
+                bool displaySuccess = DisplayFrame(p_communicator);
+                if(!displaySuccess)
+                    break;
+                m_pEndCondition->NotifyFrameDisplayed();
+            } while (!m_pEndCondition->IsMet());
+        }
+        else { 
+            // no end condition, continue ad infinitum (or until it returns false)
+            while(DisplayFrame(p_communicator));
+        }
+    }
+};
+
+class CSolidColorDisplay : public CQC2SDisplay
+{
+    SRGBColor m_color;
+
+public:
+    CSolidColorDisplay(SRGBColor p_color, String p_name, UniquePtr<CEndCondition> p_pEndCondition)
+        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition)), m_color(p_color) {}
+
+    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    {
+        UQuadcast2CommandPacket triggerPacket{};
+        triggerPacket.m_colorPacket.m_reportId = 0x44;
+        triggerPacket.m_colorPacket.m_devicePart = 1;
+        triggerPacket.m_colorPacket.m_subPartId = 6;
+        p_communicator.SendCommand(triggerPacket);
+        // TBI: Receive response
+
+        for (uint32_t subPart = 0; subPart < 6; ++subPart)
+        {
+            size_t colorCount = (subPart < 5) ? 20 : 8;
+            UQuadcast2CommandPacket colorPacket{};
+            colorPacket.m_colorPacket.m_reportId = 0x44;
+            colorPacket.m_colorPacket.m_devicePart = 2;
+            colorPacket.m_colorPacket.m_subPartId = subPart;
+
+            for (size_t j = 0; j < colorCount; ++j)
+                colorPacket.m_colorPacket.m_color[j] = m_color;
+
+            p_communicator.SendCommand(colorPacket);
+            // TBI: Receive response
+        }
+        std::this_thread::sleep_for(50ms);
+        return true;
+    }
+};
+
+class CPulseColorDisplay : public CQC2SDisplay
+{
+    SRGBColor m_baseColor;
+    float m_brightness = 0.0f;
+    float m_speed;
+    bool m_increasing = true;
+
+    SRGBColor ApplyBrightness() const
+    {
+        return {
+            static_cast<uint8_t>(m_baseColor.m_red * m_brightness),
+            static_cast<uint8_t>(m_baseColor.m_green * m_brightness),
+            static_cast<uint8_t>(m_baseColor.m_blue * m_brightness)
+        };
+    }
+
+public:
+    CPulseColorDisplay(SRGBColor p_color, float p_speed, String p_name, UniquePtr<CEndCondition> p_pEndCondition)
+        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition)), m_baseColor(p_color), m_speed(p_speed) {}
+
+    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    {
+        SRGBColor current = ApplyBrightness();
+
+        UQuadcast2CommandPacket triggerPacket{};
+        triggerPacket.m_colorPacket.m_reportId = 0x44;
+        triggerPacket.m_colorPacket.m_devicePart = 1;
+        triggerPacket.m_colorPacket.m_subPartId = 6;
+        p_communicator.SendCommand(triggerPacket);
+
+        for (uint32_t subPart = 0; subPart < 6; ++subPart)
+        {
+            size_t colorCount = (subPart < 5) ? 20 : 8;
+            UQuadcast2CommandPacket colorPacket{};
+            colorPacket.m_colorPacket.m_reportId = 0x44;
+            colorPacket.m_colorPacket.m_devicePart = 2;
+            colorPacket.m_colorPacket.m_subPartId = subPart;
+
+            for (size_t j = 0; j < colorCount; ++j)
+                colorPacket.m_colorPacket.m_color[j] = current;
+
+            p_communicator.SendCommand(colorPacket);
+        }
+
+        if (m_increasing)
+        {
+            m_brightness += m_speed;
+            if (m_brightness >= 1.0f)
+            {
+                m_brightness = 1.0f;
+                m_increasing = false;
+            }
+        }
+        else
+        {
+            m_brightness -= m_speed;
+            if (m_brightness <= 0.0f)
+            {
+                m_brightness = 0.0f;
+                m_increasing = true;
+            }
+        }
+
+        std::this_thread::sleep_for(50ms);
+        return true;
+    }
+};
+
+class CMultiDisplay : public CQC2SDisplay
+{
+    DynamicContainer<UniquePtr<CQC2SDisplay>> m_displays;
+
+    String m_initialDisplay;
+    Map<String, size_t> m_mapDisplayIndices;
+    size_t m_currentIndex;
+
+public:
+    CMultiDisplay(String p_name, UniquePtr<CEndCondition> p_pEndCondition) : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition)) {}
+
+    void AddDisplay(UniquePtr<CQC2SDisplay> p_display)
+    {
+        // add to map
+        String name = p_display->GetName();
+        if (name.empty())
+            throw std::invalid_argument("Display name must not be empty");
+        if (m_mapDisplayIndices.find(name) != m_mapDisplayIndices.end())
+            throw std::invalid_argument("Display with name '" + name + "' already exists");
+        m_mapDisplayIndices[name] = m_displays.size();
+        m_displays.push_back(std::move(p_display));
+    }
+
+    bool Initialize(CQuadcast2SCommunicator &p_communicator) override
+    {
+        for (auto &pDisplay : m_displays)
+        {
+            if (!pDisplay->Initialize(p_communicator))
+                return false;
+        }
+        return true;
+    }
+
+    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    {
+        // not used!
+        return false;
+    }
+
+    void Shutdown(CQuadcast2SCommunicator &p_communicator) override
+    {
+        for (auto &pDisplay : m_displays)
+        {
+            pDisplay->Shutdown(p_communicator);
+        }
+    }
+    void Display(CQuadcast2SCommunicator &p_communicator) override
+    {
+        if (m_pEndCondition)
+        {
+            m_pEndCondition->Reset();
+            do
+            {
+                bool displaySuccess = DisplayFrame(p_communicator);
+                if (!displaySuccess)
+                    break;
+                m_pEndCondition->NotifyFrameDisplayed();
+            } while (!m_pEndCondition->IsMet());
+        }
+        else
+        {
+            while (DisplayFrame(p_communicator));
+        }
+    }
+};
+
+constexpr SUSBID g_QUADCAST2S_USB_ID = {0x03f0, 0x02b5};
+
+class CQC2SDisplayFactory
+{
+public:
+    static UniquePtr<CQC2SDisplay> CreateSolidColor(SRGBColor p_color, String p_name = "solid", UniquePtr<CEndCondition> p_pEndCondition = nullptr)
+    {
+        return std::make_unique<CSolidColorDisplay>(p_color, std::move(p_name), std::move(p_pEndCondition));
+    }
+    static UniquePtr<CQC2SDisplay> CreatePulseColor(SRGBColor p_color, float p_speed = 0.05f, String p_name = "pulse", UniquePtr<CEndCondition> p_pEndCondition = nullptr)
+    {
+        return std::make_unique<CPulseColorDisplay>(p_color, p_speed, std::move(p_name), std::move(p_pEndCondition));
+    }
+
+    static UniquePtr<CQC2SDisplay> CreateFromArgs(int p_argc, char *p_pArgv[])
+    {
+        String displayType = "solid";
+        SRGBColor color{0xff, 0xff, 0xff};
+        float pulseSpeed = 0.05f;
+
+        for (int i = 1; i < p_argc; ++i)
+        {
+            String arg = p_pArgv[i];
+            if (arg == "--display" && i + 1 < p_argc)
+            {
+                displayType = p_pArgv[++i];
+            }
+            else if (arg == "--color" && i + 1 < p_argc)
+            {
+                String colorStr = p_pArgv[++i];
+                if (colorStr.size() == 6)
+                {
+                    // cppreference: std::invalid_argument std::out_of_range
+                    color.m_red = static_cast<uint8_t>(std::stoul(colorStr.substr(0, 2), nullptr, 16));
+                    color.m_green = static_cast<uint8_t>(std::stoul(colorStr.substr(2, 2), nullptr, 16));
+                    color.m_blue = static_cast<uint8_t>(std::stoul(colorStr.substr(4, 2), nullptr, 16));
+                }
+            }
+            else if (arg == "--pulse-speed" && i + 1 < p_argc)
+            {
+                pulseSpeed = std::stof(p_pArgv[++i]);
+            }
+        }
+
+        if (displayType == "solid")
+            return CreateSolidColor(color, "solid");
+
+        if (displayType == "pulse" || displayType == "pulse-color")
+            return CreatePulseColor(color, pulseSpeed, "pulse");
+        
+
+        std::cerr << "Unknown display type: " << displayType << ". Defaulting to solid white." << std::endl;
+        return CreateSolidColor({0xff, 0xff, 0xff}, "solid");
+    }
+};
+
+int main(int argc, char *argv[])
+{
+    /* Notes to me:
+        video formats: rgb / greyscale, raw, uncompressed, 30 fps default
+                -> options --display video --video-format rgb/greyscale --video-fps 30
+        colors:
+            - solid color
+                --display solid --color "ff00dd"
+            - pulse color with pulse speed (deciding the progression speed per tick (?) wip) 1~100?
+                --display pulse-color --color "ff00dd" --pulse-speed
+            - rainbow-color --speed 1~100
+        wip:
+            - wave (from rgb1 -> rgb2 -> ... -> rgbn -> rgb1 transitioning)
+            - twilight-esque from ngenuity?
+
+        configurable color profiles, e.g. and able to iterate through them? with example file
+        myconf.ini
+        start-profile=abc
+
+        [profile]
+        name=abc
+        display=solid
+        end-condition=time
+        duration=500 # seconds
+        next-profile=def
+
+        [profile]
+        name="def"
+        display=video
+        directory=~/whatever/myrawvideo.bin
+        video-format=rgb
+        end-condition=video_ends
+        next-profile=abc
+
+        --> note: remember 2 preload everything at start
+
+        examples:
+        quadcast2srgb --config myconf.ini
+        quadcast2srgb --display solid --color ff00dd
+
+    */
+    // "finder" logic
+    CUSBDeviceFinder finder;
+    HIDDeviceContainer devices;
+    do
+    {
+        devices = finder.FindDevices(g_QUADCAST2S_USB_ID);
+    } while (devices.empty());
+
+    CQuadcast2SCommunicator communicator(devices);
+    devices.clear();
+    if (!communicator.Connect())
+    {
+        std::cerr << "No viable device interface found after handshake. Exiting." << std::endl;
+        return 1;
+    }
+
+    UniquePtr<CQC2SDisplay> pDisplay =
+#ifdef DEBUG
+        CQC2SDisplayFactory::CreateSolidColor(SRGBColor{0x18, 0x10, 0x50});
+#else
+        CQC2SDisplayFactory::CreateFromArgs(argc, argv);
+#endif
+
+
+    if (!pDisplay->Initialize(communicator))
+        throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
+    pDisplay->Display(communicator);
+    pDisplay->Shutdown(communicator);
+}
+
+int DbgMain()
+{
+    auto greyscaleVideo =                                                                                       // CreateDummyVideoPixelScan(300);//
+        ProcessRGBVideo("/home/muma/Working/Projects/Code/quadcast2Srgb/badapp/output.bin", 1024 * 1024 * 500); // max 500 mb
 
     // debug, ths will be extended
 
@@ -635,12 +1036,12 @@ int main()
     }
     std::cout << "Connected to " << communicator.GetDevices().size() << " device(s)." << std::endl;
 
-    // Send color packets 
+    // Send color packets
 
     // wait 500 ms
     std::this_thread::sleep_for(500ms);
 
-    for (int countdown = 5; countdown > 0; --countdown)
+    /*for (int countdown = 5; countdown > 0; --countdown)
     {
         std::cout << countdown << "..." << std::endl;
         std::this_thread::sleep_for(1s);
@@ -786,4 +1187,5 @@ int main()
         }
         std::this_thread::sleep_for(50ms); // wait a bit before sending the next command
     }*/
+    return 0;
 }
