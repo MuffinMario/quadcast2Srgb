@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <map>
 #include <filesystem>
+#include <cmath>
 
 #define DEBUG 1
 
@@ -641,11 +642,12 @@ class CQC2SDisplay
 {
 protected:
     String m_name;
+    String m_nextDisplay; // name of the next display to transition to (empty = none)
     UniquePtr<CEndCondition> m_pEndCondition;
 
 public:
-    CQC2SDisplay(String p_name, UniquePtr<CEndCondition> p_pEndCondition)
-        : m_name(std::move(p_name)), m_pEndCondition(std::move(p_pEndCondition))
+    CQC2SDisplay(String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay = "")
+        : m_name(std::move(p_name)), m_nextDisplay(std::move(p_nextDisplay)), m_pEndCondition(std::move(p_pEndCondition))
     {
     }
     virtual ~CQC2SDisplay() = default;
@@ -660,23 +662,28 @@ public:
     virtual void Shutdown(CQuadcast2SCommunicator &p_communicator) {}
 
     virtual String GetName() const { return m_name; }
+    virtual String GetNextDisplay() const { return m_nextDisplay; }
+    virtual void SetNextDisplay(String p_nextDisplay) { m_nextDisplay = std::move(p_nextDisplay); }
 
     virtual void Display(CQuadcast2SCommunicator &p_communicator)
     {
         // check for end condition
         if (m_pEndCondition.get())
         {
+            m_pEndCondition->Reset();
             do
             {
                 bool displaySuccess = DisplayFrame(p_communicator);
-                if(!displaySuccess)
+                if (!displaySuccess)
                     break;
                 m_pEndCondition->NotifyFrameDisplayed();
             } while (!m_pEndCondition->IsMet());
         }
-        else { 
+        else
+        {
             // no end condition, continue ad infinitum (or until it returns false)
-            while(DisplayFrame(p_communicator));
+            while (DisplayFrame(p_communicator))
+                ;
         }
     }
 };
@@ -686,8 +693,8 @@ class CSolidColorDisplay : public CQC2SDisplay
     SRGBColor m_color;
 
 public:
-    CSolidColorDisplay(SRGBColor p_color, String p_name, UniquePtr<CEndCondition> p_pEndCondition)
-        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition)), m_color(p_color) {}
+    CSolidColorDisplay(SRGBColor p_color, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay = "")
+        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)), m_color(p_color) {}
 
     bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
     {
@@ -717,30 +724,83 @@ public:
     }
 };
 
+// Cubic Bézier easing — CSS-style: implicit P0=(0,0), P3=(1,1).
+// p_p1 and p_p2 are the two inner control points.
+// Given a linear parameter t in [0,1], solves for the Bézier curve parameter s
+// such that X(s) == t using Newton–Raphson, then returns Y(s) as the eased value.
+struct SCubicBezier
+{
+    float m_p1x;
+    float m_p1y;
+    float m_p2x;
+    float m_p2y;
+
+    static constexpr SCubicBezier EaseInOut() { return {0.11f, 0.0f, 0.35f, 1.0f}; }
+    static constexpr SCubicBezier Linear() { return {0.0f, 0.0f, 1.0f, 1.0f}; }
+};
+
+// Evaluate one component of a cubic Bézier with P0=0, P3=1 at parameter s
+static inline float CubicBezierComponent(float p_p1, float p_p2, float p_s)
+{
+    float oneMinusS = 1.0f - p_s;
+    // B(s) = 3*(1-s)^2*s*p1 + 3*(1-s)*s^2*p2 + s^3
+    return 3.0f * oneMinusS * oneMinusS * p_s * p_p1 + 3.0f * oneMinusS * p_s * p_s * p_p2 + p_s * p_s * p_s;
+}
+
+// Derivative of CubicBezierComponent w.r.t. s
+static inline float CubicBezierComponentDerivative(float p_p1, float p_p2, float p_s)
+{
+    float oneMinusS = 1.0f - p_s;
+    return 3.0f * oneMinusS * oneMinusS * p_p1 + 6.0f * oneMinusS * p_s * (p_p2 - p_p1) + 3.0f * p_s * p_s * (1.0f - p_p2);
+}
+
+// Map linear t -> eased brightness via cubic Bézier
+static float CubicBezierEval(const SCubicBezier &p_bezier, float p_t)
+{
+    if (p_t <= 0.0f)
+        return 0.0f;
+    if (p_t >= 1.0f)
+        return 1.0f;
+
+    // Newton–Raphson: find s such that X(s) == t
+    float s = p_t; // initial guess
+    for (int iter = 0; iter < 8; ++iter)
+    {
+        float xS = CubicBezierComponent(p_bezier.m_p1x, p_bezier.m_p2x, s);
+        float dxS = CubicBezierComponentDerivative(p_bezier.m_p1x, p_bezier.m_p2x, s);
+        if (std::abs(dxS) < 1e-6f)
+            break;
+        s -= (xS - p_t) / dxS;
+        s = std::max(0.0f, std::min(1.0f, s));
+    }
+    return CubicBezierComponent(p_bezier.m_p1y, p_bezier.m_p2y, s);
+}
+
 class CPulseColorDisplay : public CQC2SDisplay
 {
     SRGBColor m_baseColor;
-    float m_brightness = 0.0f;
-    float m_speed;
+    float m_t = 0.0f; // linear phase in [0, 1]
+    float m_speed;    // advance per frame (in [0,1] units)
     bool m_increasing = true;
+    SCubicBezier m_bezier;
 
-    SRGBColor ApplyBrightness() const
+    SRGBColor ApplyBrightness(float p_brightness) const
     {
         return {
-            static_cast<uint8_t>(m_baseColor.m_red * m_brightness),
-            static_cast<uint8_t>(m_baseColor.m_green * m_brightness),
-            static_cast<uint8_t>(m_baseColor.m_blue * m_brightness)
-        };
+            static_cast<uint8_t>(m_baseColor.m_red * p_brightness),
+            static_cast<uint8_t>(m_baseColor.m_green * p_brightness),
+            static_cast<uint8_t>(m_baseColor.m_blue * p_brightness)};
     }
 
 public:
-    CPulseColorDisplay(SRGBColor p_color, float p_speed, String p_name, UniquePtr<CEndCondition> p_pEndCondition)
-        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition)), m_baseColor(p_color), m_speed(p_speed) {}
+    CPulseColorDisplay(SRGBColor p_color, float p_speed, String p_name, UniquePtr<CEndCondition> p_pEndCondition,
+                       SCubicBezier p_bezier = SCubicBezier::EaseInOut(), String p_nextDisplay = "")
+        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
+          m_baseColor(p_color), m_speed(p_speed), m_bezier(p_bezier) {}
 
     bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
     {
-        SRGBColor current = ApplyBrightness();
-
+        SRGBColor current = ApplyBrightness(CubicBezierEval(m_bezier, m_t));
         UQuadcast2CommandPacket triggerPacket{};
         triggerPacket.m_colorPacket.m_reportId = 0x44;
         triggerPacket.m_colorPacket.m_devicePart = 1;
@@ -763,19 +823,19 @@ public:
 
         if (m_increasing)
         {
-            m_brightness += m_speed;
-            if (m_brightness >= 1.0f)
+            m_t += m_speed;
+            if (m_t >= 1.0f)
             {
-                m_brightness = 1.0f;
+                m_t = 1.0f;
                 m_increasing = false;
             }
         }
         else
         {
-            m_brightness -= m_speed;
-            if (m_brightness <= 0.0f)
+            m_t -= m_speed;
+            if (m_t <= 0.0f)
             {
-                m_brightness = 0.0f;
+                m_t = 0.0f;
                 m_increasing = true;
             }
         }
@@ -791,10 +851,12 @@ class CMultiDisplay : public CQC2SDisplay
 
     String m_initialDisplay;
     Map<String, size_t> m_mapDisplayIndices;
+    DynamicContainer<size_t> m_mapIndexTransitions;
     size_t m_currentIndex;
 
 public:
-    CMultiDisplay(String p_name, UniquePtr<CEndCondition> p_pEndCondition) : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition)) {}
+    CMultiDisplay(String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_firstDisplay = "")
+        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_firstDisplay)) {}
 
     void AddDisplay(UniquePtr<CQC2SDisplay> p_display)
     {
@@ -810,6 +872,38 @@ public:
 
     bool Initialize(CQuadcast2SCommunicator &p_communicator) override
     {
+        // init transition map for multidisplay
+        m_mapIndexTransitions.resize(m_mapDisplayIndices.size());
+        for (auto &pDisplay : m_displays)
+        {
+            String thisDisplay = pDisplay->GetName();
+            String next = pDisplay->GetNextDisplay();
+
+            auto thisIt = m_mapDisplayIndices.find(thisDisplay);
+            if (thisIt == m_mapDisplayIndices.end())
+                throw std::runtime_error("Display name '" + thisDisplay + "' not found in index map");
+
+            size_t thisDisplayIndex = thisIt->second;
+
+            // next has been chosen
+            if (!next.empty())
+            {
+                auto nextIt = m_mapDisplayIndices.find(next);
+                if (nextIt == m_mapDisplayIndices.end())
+                    throw std::runtime_error("Next display name '" + next + "' not found in index map");
+                m_mapIndexTransitions[thisDisplayIndex] = nextIt->second;
+            }
+            // no next given -> assume stop
+            else
+            {
+                m_mapIndexTransitions[thisDisplayIndex] = (size_t)-1;
+            }
+        }
+        // set initial index
+        if (m_nextDisplay.empty() || m_mapDisplayIndices.find(m_nextDisplay) == m_mapDisplayIndices.end())
+            throw std::runtime_error("Initial display '" + m_nextDisplay + "' not found in display index map");
+        m_currentIndex = m_mapDisplayIndices[m_nextDisplay];
+        // init all the displays
         for (auto &pDisplay : m_displays)
         {
             if (!pDisplay->Initialize(p_communicator))
@@ -831,23 +925,21 @@ public:
             pDisplay->Shutdown(p_communicator);
         }
     }
+
     void Display(CQuadcast2SCommunicator &p_communicator) override
     {
-        if (m_pEndCondition)
+        if (m_displays.empty())
+            return;
+
+        do
         {
-            m_pEndCondition->Reset();
-            do
-            {
-                bool displaySuccess = DisplayFrame(p_communicator);
-                if (!displaySuccess)
-                    break;
-                m_pEndCondition->NotifyFrameDisplayed();
-            } while (!m_pEndCondition->IsMet());
-        }
-        else
-        {
-            while (DisplayFrame(p_communicator));
-        }
+            // run display of current display
+            auto &pDisplay = m_displays[m_currentIndex];
+            pDisplay->Display(p_communicator);
+            // get next one in line
+            auto next = m_mapIndexTransitions[m_currentIndex];
+            m_currentIndex = next;
+        } while (m_currentIndex != (size_t)-1);
     }
 };
 
@@ -856,19 +948,26 @@ constexpr SUSBID g_QUADCAST2S_USB_ID = {0x03f0, 0x02b5};
 class CQC2SDisplayFactory
 {
 public:
-    static UniquePtr<CQC2SDisplay> CreateSolidColor(SRGBColor p_color, String p_name = "solid", UniquePtr<CEndCondition> p_pEndCondition = nullptr)
+    static UniquePtr<CQC2SDisplay> CreateSolidColor(SRGBColor p_color, String p_name = "solid", UniquePtr<CEndCondition> p_pEndCondition = nullptr, String p_nextDisplay = "")
     {
-        return std::make_unique<CSolidColorDisplay>(p_color, std::move(p_name), std::move(p_pEndCondition));
+        return std::make_unique<CSolidColorDisplay>(p_color, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
     }
-    static UniquePtr<CQC2SDisplay> CreatePulseColor(SRGBColor p_color, float p_speed = 0.05f, String p_name = "pulse", UniquePtr<CEndCondition> p_pEndCondition = nullptr)
+    static UniquePtr<CQC2SDisplay> CreatePulseColor(SRGBColor p_color, float p_speed = 0.05f, String p_name = "pulse", UniquePtr<CEndCondition> p_pEndCondition = nullptr, SCubicBezier p_bezier = SCubicBezier::EaseInOut(), String p_nextDisplay = "")
     {
-        return std::make_unique<CPulseColorDisplay>(p_color, p_speed, std::move(p_name), std::move(p_pEndCondition));
+        return std::make_unique<CPulseColorDisplay>(p_color, p_speed, std::move(p_name), std::move(p_pEndCondition), p_bezier, std::move(p_nextDisplay));
+    }
+    static UniquePtr<CQC2SDisplay> CreateMultiDisplay(String p_name = "multi", UniquePtr<CEndCondition> p_pEndCondition = nullptr, String p_nextDisplay = "")
+    {
+        return std::make_unique<CMultiDisplay>(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
     }
 
     static UniquePtr<CQC2SDisplay> CreateFromArgs(int p_argc, char *p_pArgv[])
     {
+        // default settings
         String displayType = "solid";
+        String videoPath = "";
         SRGBColor color{0xff, 0xff, 0xff};
+        SCubicBezier bezier = SCubicBezier::EaseInOut();
         float pulseSpeed = 0.05f;
 
         for (int i = 1; i < p_argc; ++i)
@@ -893,14 +992,20 @@ public:
             {
                 pulseSpeed = std::stof(p_pArgv[++i]);
             }
+            else if (arg == "--pulse-cubic-bezier" && i + 4 < p_argc)
+            {
+                bezier.m_p1x = std::stof(p_pArgv[++i]);
+                bezier.m_p1y = std::stof(p_pArgv[++i]);
+                bezier.m_p2x = std::stof(p_pArgv[++i]);
+                bezier.m_p2y = std::stof(p_pArgv[++i]);
+            }
         }
 
         if (displayType == "solid")
             return CreateSolidColor(color, "solid");
 
         if (displayType == "pulse" || displayType == "pulse-color")
-            return CreatePulseColor(color, pulseSpeed, "pulse");
-        
+            return CreatePulseColor(color, pulseSpeed, "pulse", nullptr, bezier);
 
         std::cerr << "Unknown display type: " << displayType << ". Defaulting to solid white." << std::endl;
         return CreateSolidColor({0xff, 0xff, 0xff}, "solid");
@@ -966,11 +1071,22 @@ int main(int argc, char *argv[])
 
     UniquePtr<CQC2SDisplay> pDisplay =
 #ifdef DEBUG
-        CQC2SDisplayFactory::CreateSolidColor(SRGBColor{0x18, 0x10, 0x50});
+        // CQC2SDisplayFactory::CreateSolidColor(SRGBColor{0x18, 0x10, 0x50});
+        //  now i see why NGITY only has full color options for fading/pulsing colors
+        //  CQC2SDisplayFactory::CreatePulseColor(SRGBColor{0x19, 0x11, 0x52},0.025);
+        // CQC2SDisplayFactory::CreatePulseColor(SRGBColor{0x10, 0x10, 0xc5},0.025);
+        CQC2SDisplayFactory::CreateMultiDisplay("multi", nullptr, "solid1");
+    auto *pMultiDisplay = static_cast<CMultiDisplay *>(pDisplay.get());
+
+    pMultiDisplay->AddDisplay(
+        CQC2SDisplayFactory::CreateSolidColor({0x00, 0xff, 0xff}, "solid1", std::make_unique<CTimeEndCondition>(3s),"solid2"));
+    pMultiDisplay->AddDisplay(
+        CQC2SDisplayFactory::CreateSolidColor({0x3c, 0x10, 0xff}, "solid2", std::make_unique<CTimeEndCondition>(5s),"pulse1"));
+    pMultiDisplay->AddDisplay(
+        CQC2SDisplayFactory::CreatePulseColor({0x10, 0x10, 0xc5},0.025,"pulse1",nullptr));
 #else
         CQC2SDisplayFactory::CreateFromArgs(argc, argv);
 #endif
-
 
     if (!pDisplay->Initialize(communicator))
         throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
