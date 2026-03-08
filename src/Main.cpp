@@ -16,14 +16,34 @@
 #include <filesystem>
 #include <cmath>
 #include <optional>
+#include <condition_variable>
+#include <mutex>
+#include <atomic>
+#include <queue>
+#include <set>
+#include <functional>
+#include <set>
+#include <csignal>
 
-bool g_verbosity = false;
-
-//#define DEBUG 1
+#define DEBUG 1
 
 using namespace std::chrono_literals;
 using Thread = std::thread;
 using namespace std::string_literals;
+template <typename TType>
+using Atomic = std::atomic<TType>;
+
+using ConditionVariable = std::condition_variable;
+
+using Mutex = std::mutex;
+using UniqueLock = std::unique_lock<Mutex>; // we dont need to template this in our case
+using LockGuard = std::lock_guard<Mutex>;
+using AtomicBool = Atomic<bool>;
+template <typename TVal>
+using Queue = std::queue<TVal>;
+// Forward declaration needed for FrameCallback alias (defined below the classes).
+class CQuadcast2SCommunicator;
+using FrameCallback = std::function<bool(CQuadcast2SCommunicator &)>;
 
 /*
     Looking at the packet communication it seems like
@@ -69,6 +89,8 @@ using DynamicContainer = std::vector<TType>;
 using DynamicByteContainer = DynamicContainer<uint8_t>;
 template <typename TKey, typename TVal>
 using Map = std::map<TKey, TVal>;
+template <typename TKey>
+using Set = std::set<TKey>;
 template <typename TVal>
 using UniquePtr = std::unique_ptr<TVal>;
 template <typename TVal>
@@ -78,6 +100,9 @@ using IFStream = std::ifstream;
 using OFStream = std::ofstream;
 using FS = std::filesystem::filesystem_error;
 using Path = std::filesystem::path;
+
+static AtomicBool g_verbosity = false;
+static AtomicBool g_signalStopRequest;
 
 #pragma pack(push, 1)
 struct SRGBColor
@@ -159,18 +184,31 @@ inline HIDDevicePtr MakeHIDDevicePtr(hid_device *p_pDev)
 
 using HIDDeviceContainer = DynamicContainer<HIDDevicePtr>;
 
+// ---------------------------------------------------------------------------
+// CQuadcast2SCommunicator
+//
+// Owns the set of *verified* (post-handshake) HID device handles and provides
+// the sole communication API.  No discovery or handshaking lives here.
+//
+// Thread-safety: all public methods are guarded by m_mutex so the display
+// thread (SendCommand/ReceiveResponse) and the pipeline threads (AddDevice /
+// RemoveDevice called during hot-plug) can operate concurrently.
+// ---------------------------------------------------------------------------
 class CQuadcast2SCommunicator
 {
     HIDDeviceContainer m_devices;
+    mutable Mutex m_mutex;
 
+    // Send to a single device; caller must NOT hold m_mutex.
+    // Returns the hid_write result; on failure the device is removed.
     int Send(HIDDevicePtr p_device, const uint8_t *p_pData, size_t p_size)
     {
         int writeRes = hid_write(p_device.get(), p_pData, p_size);
         if (writeRes < 0)
         {
-            std::cerr << "Failed to write to device: " << hid_error(p_device.get()) << " Removing device from list." << std::endl;
-            if (!RemoveDevice(p_device)) // remove the device from the list, it might have been disconnected
-                std::cerr << "Failed to remove device from list: " << hid_error(p_device.get()) << std::endl;
+            std::cerr << "Failed to write to device: " << hid_error(p_device.get())
+                      << " — removing from list." << std::endl;
+            RemoveDevice(p_device);
         }
         else if (writeRes != static_cast<int>(p_size))
         {
@@ -180,14 +218,20 @@ class CQuadcast2SCommunicator
     }
 
 public:
-    CQuadcast2SCommunicator(const HIDDeviceContainer &p_devices)
-        : m_devices(p_devices) {}
-    //~CQuadcast2SCommunicator() {}
+    CQuadcast2SCommunicator() = default;
 
-    const HIDDeviceContainer &GetDevices() const { return m_devices; }
-    void SetDevices(const HIDDeviceContainer &p_devices) { m_devices = p_devices; }
+    // Add a single verified device.  Ignores duplicates (same pointer).
+    void AddDevice(HIDDevicePtr p_device)
+    {
+        LockGuard lock(m_mutex);
+        auto it = std::find(m_devices.begin(), m_devices.end(), p_device);
+        if (it == m_devices.end())
+            m_devices.push_back(std::move(p_device));
+    }
+
     bool RemoveDevice(const HIDDevicePtr &p_device)
     {
+        LockGuard lock(m_mutex);
         auto it = std::find(m_devices.begin(), m_devices.end(), p_device);
         if (it != m_devices.end())
         {
@@ -196,173 +240,99 @@ public:
         }
         return false;
     }
-    void RemoveOtherDevicesWithSerial(const HIDDevicePtr &p_pDevice)
-    {
-        // Get the serial number of the device
-        hid_device_info *pInfo = hid_get_device_info(p_pDevice.get());
-        if (!pInfo)
-        {
-            std::cerr << "Failed to get device info for serial comparison: " << hid_error(p_pDevice.get()) << std::endl;
-            std::cerr << "Removing this device instead\n";
-            RemoveDevice(p_pDevice);
-            return;
-        }
-        WString targetSerial = WString(pInfo->serial_number);
 
-        m_devices.erase(
-            std::remove_if(m_devices.begin(), m_devices.end(),
-                           [&targetSerial, &p_pDevice](const HIDDevicePtr &p_pDev)
-                           {
-                               hid_device_info *pInfo = hid_get_device_info(p_pDev.get());
-                               if (!pInfo)
-                                   return true; // remove if we can't get info for comparison
-                               WString serial = WString(pInfo->serial_number);
-                               return (serial == targetSerial) && (p_pDev != p_pDevice);
-                           }),
-            m_devices.end());
+    Set<WString> GetOpenSerials() const
+    {
+        LockGuard lock(m_mutex);
+        Set<WString> serials;
+        for (const auto &pDev : m_devices)
+        {
+            hid_device_info *pInfo = hid_get_device_info(pDev.get());
+            if (pInfo && pInfo->serial_number)
+                serials.emplace(pInfo->serial_number);
+        }
+        return serials;
+    }
+
+    bool IsEmpty() const
+    {
+        LockGuard lock(m_mutex);
+        return m_devices.empty();
+    }
+
+    // Return the set of filesystem paths currently held open.
+    // ScanThread passes this to EnumerateNew so it never re-enumerates live
+    // devices, and so that removed devices automatically become re-discoverable.
+    std::set<String> GetOpenPaths() const
+    {
+        LockGuard lock(m_mutex);
+        std::set<String> paths;
+        for (const auto &pDev : m_devices)
+        {
+            hid_device_info *pInfo = hid_get_device_info(pDev.get());
+            if (pInfo && pInfo->path)
+                paths.insert(pInfo->path);
+        }
+        return paths;
     }
 
     DynamicContainer<int> SendCommand(UQuadcast2CommandPacket &p_commandPacket)
     {
         return SendCommand(p_commandPacket.m_rawData.data(), p_commandPacket.m_rawData.size());
     }
-    
+
     DynamicContainer<int> SendCommand(const uint8_t *p_pData, size_t p_size)
     {
-        DynamicContainer<int> writeResults(m_devices.size(), -1);
-        for (size_t i = 0; i < m_devices.size(); ++i)
+        // Snapshot under lock so we don't hold the mutex during HID I/O.
+        HIDDeviceContainer snapshot;
         {
-            writeResults[i] = Send(m_devices[i], p_pData, p_size);
+            LockGuard lock(m_mutex);
+            snapshot = m_devices;
         }
-        return writeResults;
+        DynamicContainer<int> results(snapshot.size(), -1);
+        for (size_t i = 0; i < snapshot.size(); ++i)
+            results[i] = Send(snapshot[i], p_pData, p_size);
+        return results;
     }
 
     DynamicContainer<DynamicByteContainer> ReceiveResponse(size_t p_bufferSize, uint32_t p_timeout)
     {
-        DynamicContainer<DynamicByteContainer> responses(m_devices.size());
-        for (size_t i = 0; i < m_devices.size(); ++i)
+        HIDDeviceContainer snapshot;
+        {
+            LockGuard lock(m_mutex);
+            snapshot = m_devices;
+        }
+        DynamicContainer<DynamicByteContainer> responses(snapshot.size());
+        for (size_t i = 0; i < snapshot.size(); ++i)
         {
             DynamicByteContainer buffer(p_bufferSize);
-            int res = hid_read_timeout(m_devices[i].get(), buffer.data(), buffer.size(), p_timeout);
+            int res = hid_read_timeout(snapshot[i].get(), buffer.data(), buffer.size(), p_timeout);
             if (res < 0)
             {
-                std::cerr << "Failed to read from device: " << hid_error(m_devices[i].get()) << std::endl;
+                std::cerr << "Failed to read from device: " << hid_error(snapshot[i].get()) << std::endl;
                 responses[i] = {};
             }
             else if (res > 0)
             {
-                buffer.resize(res); // resize to actual received size
-                responses[i] = buffer;
+                buffer.resize(res);
+                responses[i] = std::move(buffer);
             }
-            else
-            {
-                responses[i] = {}; // no data received within timeout
-            }
+            // else: timeout, leave responses[i] empty
         }
         return responses;
     }
-
-    // Connect to all devices performing a handshake to all interfaces, until one per device has been found, and then skip over the remaining interfaces of this device.
-    bool Connect()
-    {
-        constexpr uint32_t HANDSHAKE_TIMEOUT_MS = 1000;
-
-        // Group devices by serial
-        Map<WString, DynamicContainer<HIDDevicePtr>> serialGroups;
-        for (const auto &pDev : m_devices)
-        {
-            hid_device_info *pInfo = hid_get_device_info(pDev.get());
-            WString serial = (pInfo && pInfo->serial_number) ? pInfo->serial_number : L"";
-            serialGroups[serial].push_back(pDev);
-        }
-
-        // Devices to keep after handshake
-        HIDDeviceContainer viableDevices;
-
-        for (auto &[serial, interfaces] : serialGroups)
-        {
-            HIDDevicePtr pViable = nullptr;
-
-            for (auto &pDev : interfaces)
-            {
-                // Build handshake packet
-                UQuadcast2CommandPacket handshakePacket{};
-                handshakePacket.m_handshakePacket.m_reportId = 0x10;
-                handshakePacket.m_handshakePacket.m_devicePart = 1;
-                handshakePacket.m_handshakePacket.m_subPartId = 0;
-
-                int writeRes = hid_write(pDev.get(),
-                                         handshakePacket.m_rawData.data(),
-                                         handshakePacket.m_rawData.size());
-
-                if (writeRes < 0)
-                {
-#if DEBUG
-                    std::wcerr << L"[Connect] Write failed on interface (serial="
-                               << serial << L"): " << hid_error(pDev.get()) << std::endl;
-#endif
-                    continue;
-                }
-
-                // Read response
-                DynamicByteContainer buffer(sizeof(UQuadcast2CommandPacket));
-                int readRes = hid_read_timeout(pDev.get(), buffer.data(), buffer.size(), HANDSHAKE_TIMEOUT_MS);
-
-                if (readRes < 0)
-                {
-#if DEBUG
-                    std::wcerr << L"[Connect] Read failed on interface (serial="
-                               << serial << L"): " << hid_error(pDev.get()) << std::endl;
-#endif
-                    continue;
-                }
-
-                if (readRes != static_cast<int>(sizeof(UQuadcast2CommandPacket)))
-                {
-#if DEBUG
-                    std::wcout << L"[Connect] Incomplete/no response on interface (serial="
-                               << serial << L"): got " << readRes << L" bytes." << std::endl;
-#endif
-                    continue;
-                }
-
-                const auto *pResponse = reinterpret_cast<const UQuadcast2CommandPacket *>(buffer.data());
-                if (pResponse->m_responsePacket.m_reportId != 0x11)
-                {
-#if DEBUG
-                    std::wcout << L"[Connect] Unexpected reportId=0x"
-                               << std::hex << static_cast<int>(pResponse->m_responsePacket.m_reportId)
-                               << std::dec << L" on interface (serial=" << serial << L")." << std::endl;
-#endif
-                    continue;
-                }
-
-                // Valid handshake response — this is the viable interface for this physical device
-                hid_device_info *pInfo = hid_get_device_info(pDev.get());
-                std::wcout << L"[Connect] Handshake OK — keeping interface "
-                           << (pInfo ? pInfo->path : "(unknown)")
-                           << L" (serial=" << serial << L")" << std::endl;
-                pViable = pDev;
-                break; // skip remaining interfaces for this serial
-            }
-
-            if (pViable)
-            {
-                viableDevices.push_back(pViable);
-            }
-            else
-            {
-#if DEBUG
-                std::wcout << L"[Connect] No viable interface found for serial=" << serial << std::endl;
-#endif
-            }
-        }
-
-        m_devices = viableDevices;
-        return !m_devices.empty();
-    }
 };
 
+// ---------------------------------------------------------------------------
+// CUSBDeviceFinder
+//
+// Owns the HID API lifetime (hid_init / hid_exit).
+// FindDevices   — enumerate and open *all* matching interfaces.
+// EnumerateNew  — same, but skips paths already tracked by the communicator
+//                 so that live devices are never re-opened and disconnected
+//                 devices automatically become re-discoverable once the
+//                 communicator drops their handle.
+// ---------------------------------------------------------------------------
 class CUSBDeviceFinder
 {
     bool m_isInitialized = false;
@@ -370,13 +340,11 @@ class CUSBDeviceFinder
 public:
     CUSBDeviceFinder()
     {
-        auto ret = hid_init();
-        m_isInitialized = (ret == 0);
-        if (hid_init())
-        {
-            throw CHIDException("Failed to initialize HID API"s + std::to_string(ret));
-        }
-    };
+        int ret = hid_init();
+        if (ret != 0)
+            throw CHIDException("Failed to initialize HID API: " + std::to_string(ret));
+        m_isInitialized = true;
+    }
     CUSBDeviceFinder(const CUSBDeviceFinder &) = delete;
     CUSBDeviceFinder &operator=(const CUSBDeviceFinder &) = delete;
     CUSBDeviceFinder(CUSBDeviceFinder &&) = delete;
@@ -385,44 +353,118 @@ public:
     {
         if (m_isInitialized)
         {
-            auto ret = hid_exit();
+            int ret = hid_exit();
             if (ret != 0)
-            {
                 std::cerr << "Failed to exit HID API: " << ret << std::endl;
-            }
         }
-    };
+    }
 
-    static HIDDeviceContainer FindDevices(const SUSBID &p_usbId,
-                                          Option<DynamicContainer<WString>> p_allowedSerials = std::nullopt)
+    static HIDDeviceContainer FindDevices(
+        const SUSBID &p_usbId,
+        const Option<Set<WString>> &p_allowedSerials = std::nullopt,
+        const Option<Set<WString>> &p_ignoredSerials = std::nullopt)
     {
-        hid_device_info *pDevices = hid_enumerate(p_usbId.m_vendorId, p_usbId.m_productId);
-        HIDDeviceContainer foundDevices;
-        while (pDevices)
+        return EnumerateNew(p_usbId, p_ignoredSerials, p_allowedSerials);
+    }
+
+    // Open every interface whose path is NOT in p_activePaths.
+    // Caller supplies the active-path set from CQuadcast2SCommunicator::GetOpenPaths().
+    static HIDDeviceContainer EnumerateNew(
+        const SUSBID &p_usbId,
+        const Option<Set<WString>> &p_ignoredSerials = std::nullopt,
+        const Option<Set<WString>> &p_allowedSerials = std::nullopt)
+    {
+        hid_device_info *pList = hid_enumerate(p_usbId.m_vendorId, p_usbId.m_productId);
+        HIDDeviceContainer found;
+        for (hid_device_info *pCur = pList; pCur; pCur = pCur->next)
         {
-            // If a serial filter is provided, skip devices whose serial is not in the list
+            WString serial = pCur->serial_number ? WString(pCur->serial_number) : WString{};
+            // Serial filter
             if (p_allowedSerials.has_value())
             {
-                WString serial = pDevices->serial_number ? WString(pDevices->serial_number) : WString{};
                 const auto &allowed = p_allowedSerials.value();
                 if (std::find(allowed.begin(), allowed.end(), serial) == allowed.end())
-                {
-                    pDevices = pDevices->next;
                     continue;
-                }
             }
-
-            hid_device *pDevice = hid_open_path(pDevices->path);
-            if (pDevice)
+            if (p_ignoredSerials.has_value())
             {
-                auto pHidDevicePtr = MakeHIDDevicePtr(pDevice);
-                foundDevices.push_back(pHidDevicePtr);
+                const auto &ignored = p_ignoredSerials.value();
+                if (std::find(ignored.begin(), ignored.end(), serial) != ignored.end())
+                    continue;
             }
-            pDevices = pDevices->next;
-        }
-        hid_free_enumeration(pDevices);
 
-        return foundDevices;
+            hid_device *pDev = hid_open_path(pCur->path);
+            if (pDev)
+                found.push_back(MakeHIDDevicePtr(pDev));
+        }
+        hid_free_enumeration(pList);
+        return found;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// CQuadcast2SHandshaker
+//
+// Takes a bag of raw HID interfaces (all interfaces for potentially multiple
+// physical devices) and performs the protocol handshake to identify the single
+// correct interface per physical device (serial).
+//
+// ConnectOne  — handshake a single HIDDevicePtr; returns it on success or
+//               nullptr on failure.  Stateless and thread-safe.
+// ---------------------------------------------------------------------------
+class CQuadcast2SHandshaker
+{
+    static constexpr uint32_t g_HANDSHAKE_TIMEOUT_MS = 1000;
+
+public:
+    // Probe p_device with the handshake packet.
+    // Returns p_device on success, nullptr if the interface did not respond
+    // with the expected 0x11 report-ID.
+    static HIDDevicePtr ConnectOne(const HIDDevicePtr &p_device)
+    {
+        UQuadcast2CommandPacket pkt{};
+        pkt.m_handshakePacket.m_reportId = 0x10;
+        pkt.m_handshakePacket.m_devicePart = 1;
+        pkt.m_handshakePacket.m_subPartId = 0;
+
+        int writeRes = hid_write(p_device.get(), pkt.m_rawData.data(), pkt.m_rawData.size());
+        if (writeRes < 0)
+        {
+            if (g_verbosity)
+                std::wcerr << L"[Handshake] Write failed: " << hid_error(p_device.get()) << std::endl;
+            return nullptr;
+        }
+
+        DynamicByteContainer buf(sizeof(UQuadcast2CommandPacket));
+        int readRes = hid_read_timeout(p_device.get(), buf.data(), buf.size(), g_HANDSHAKE_TIMEOUT_MS);
+
+        if (readRes < 0)
+        {
+            if (g_verbosity)
+                std::wcerr << L"[Handshake] Read failed: " << hid_error(p_device.get()) << std::endl;
+            return nullptr;
+        }
+
+        if (readRes != static_cast<int>(sizeof(UQuadcast2CommandPacket)))
+        {
+            if (g_verbosity)
+                std::wcout << L"[Handshake] Incomplete response: got " << readRes << L" bytes." << std::endl;
+
+            return nullptr;
+        }
+
+        const auto *pResp = reinterpret_cast<const UQuadcast2CommandPacket *>(buf.data());
+        if (pResp->m_responsePacket.m_reportId != 0x11)
+        {
+            if (g_verbosity)
+                std::wcout << L"[Handshake] Unexpected reportId=0x"
+                           << std::hex << static_cast<int>(pResp->m_responsePacket.m_reportId)
+                           << std::dec << std::endl;
+            return nullptr;
+        }
+
+        hid_device_info *pInfo = hid_get_device_info(p_device.get());
+        return p_device;
     }
 };
 
@@ -685,7 +727,7 @@ public:
     virtual ~CQC2SDisplay() = default;
 
     // Called once before displaying starts; return false to abort
-    virtual bool Initialize(CQuadcast2SCommunicator &p_communicator) { return true; }
+    virtual bool Initialize() { return true; }
 
     // Called once per frame; return false to stop displaying
     virtual bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) = 0;
@@ -697,7 +739,9 @@ public:
     virtual String GetNextDisplay() const { return m_nextDisplay; }
     virtual void SetNextDisplay(String p_nextDisplay) { m_nextDisplay = std::move(p_nextDisplay); }
 
-    virtual void Display(CQuadcast2SCommunicator &p_communicator)
+    virtual void Display(CQuadcast2SCommunicator &p_communicator,
+                         const AtomicBool &p_signalStopRequest,
+                         FrameCallback p_frameCallback = nullptr)
     {
         // check for end condition
         if (m_pEndCondition.get())
@@ -705,17 +749,26 @@ public:
             m_pEndCondition->Reset();
             do
             {
+                if (p_frameCallback && !p_frameCallback(p_communicator))
+                    break;
+                if (p_signalStopRequest.load())
+                    break;
                 bool displaySuccess = DisplayFrame(p_communicator);
                 if (!displaySuccess)
                     break;
                 m_pEndCondition->NotifyFrameDisplayed();
-            } while (!m_pEndCondition->IsMet());
+            } while (!m_pEndCondition->IsMet() && !p_signalStopRequest.load());
         }
         else
         {
             // no end condition, continue ad infinitum (or until it returns false)
-            while (DisplayFrame(p_communicator))
-                ;
+            while (!p_signalStopRequest.load())
+            {
+                if (p_frameCallback && !p_frameCallback(p_communicator))
+                    break;
+                if (!DisplayFrame(p_communicator))
+                    break;
+            }
         }
     }
 };
@@ -918,7 +971,7 @@ public:
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
           m_frames(std::move(p_frames)), m_fps(p_fps) {}
 
-    bool Initialize(CQuadcast2SCommunicator & /*p_communicator*/) override
+    bool Initialize() override
     {
         m_currentFrame = 0;
         return !m_frames.empty();
@@ -968,12 +1021,14 @@ public:
 
             p_communicator.SendCommand(colorPacket);
         }
-
+        auto elapsed = std::chrono::steady_clock::now() - frameStart;
+        #ifdef DEBUG
+                //std::wcout << "Displayed frame " << m_currentFrame << " / " << m_frames.size() << " elapsed " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << " ms" << std::endl;
+        #endif
         // advance frame, looping when end of video is reached, end condition is decided outside...
         m_currentFrame = (m_currentFrame + 1) % m_frames.size();
-
+        
         // delta wait to align to framerate
-        auto elapsed = std::chrono::steady_clock::now() - frameStart;
         if (elapsed < frameDuration)
             std::this_thread::sleep_for(frameDuration - elapsed);
 
@@ -1006,7 +1061,7 @@ public:
         m_displays.push_back(std::move(p_display));
     }
 
-    bool Initialize(CQuadcast2SCommunicator &p_communicator) override
+    bool Initialize() override
     {
         // init transition map for multidisplay
         m_mapIndexTransitions.resize(m_mapDisplayIndices.size());
@@ -1042,7 +1097,7 @@ public:
         // init all the displays
         for (auto &pDisplay : m_displays)
         {
-            if (!pDisplay->Initialize(p_communicator))
+            if (!pDisplay->Initialize())
                 return false;
         }
         return true;
@@ -1062,7 +1117,9 @@ public:
         }
     }
 
-    void Display(CQuadcast2SCommunicator &p_communicator) override
+    void Display(CQuadcast2SCommunicator &p_communicator,
+                 const AtomicBool &p_signalStopRequest,
+                 FrameCallback p_frameCallback = nullptr) override
     {
         if (m_displays.empty())
             return;
@@ -1071,11 +1128,11 @@ public:
         {
             // run display of current display
             auto &pDisplay = m_displays[m_currentIndex];
-            pDisplay->Display(p_communicator);
+            pDisplay->Display(p_communicator, p_signalStopRequest, p_frameCallback);
             // get next one in line
             auto next = m_mapIndexTransitions[m_currentIndex];
             m_currentIndex = next;
-        } while (m_currentIndex != (size_t)-1);
+        } while (m_currentIndex != (size_t)-1 && !p_signalStopRequest.load());
     }
 };
 
@@ -1134,7 +1191,7 @@ public:
         for (int i = 1; i < p_argc; ++i)
         {
             String arg = p_pArgv[i];
-            std::wcout << WString(arg.begin(),arg.end()) << std::endl;
+            std::wcout << WString(arg.begin(), arg.end()) << std::endl;
             if (arg == "--display" && i + 1 < p_argc)
             {
                 displayType = p_pArgv[++i];
@@ -1190,7 +1247,7 @@ public:
             if (videoPath.empty())
             {
                 std::cerr << "--display video requires --video-path <path>. Defaulting to default color." << std::endl;
-                return CreateSolidColor({0x29,0x00,0x66}, "solid");
+                return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
             }
             // try to load the video and create the display
             try
@@ -1199,31 +1256,32 @@ public:
                 if (frames.empty())
                 {
                     std::cerr << "Video file loaded but contains no frames: " << videoPath << ". Defaulting to default color." << std::endl;
-                    return CreateSolidColor({0x29,0x00,0x66}, "solid");
+                    return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
                 }
                 return CreateVideoDisplay(std::move(frames), videoFramerate, "video");
             }
             catch (const std::exception &e)
             {
                 std::cerr << "Failed to load video file '" << videoPath << "': " << e.what() << ". Defaulting to default color." << std::endl;
-                return CreateSolidColor({0x29,0x00,0x66}, "solid");
+                return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
             }
         }
 
         std::cerr << "Unknown display type: " << displayType << ". Defaulting to default color." << std::endl;
-        return CreateSolidColor({0x29,0x00,0x66}, "solid");
+        return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
     }
 };
 
-static Option<DynamicContainer<WString>> ParseSerialArgs(int p_argc, char *p_pArgv[])
+static Option<Set<WString>> ParseSerialArgs(int p_argc, char *p_pArgv[])
 {
-    DynamicContainer<WString> serials;
+    Set<WString> serials;
     for (int i = 1; i < p_argc; ++i)
     {
         if (String(p_pArgv[i]) == "--serial" && i + 1 < p_argc)
         {
             String raw = p_pArgv[++i];
-            serials.emplace_back(raw.begin(), raw.end());
+            WString wraw(raw.begin(), raw.end());
+            serials.emplace(wraw);
         }
     }
     if (serials.empty())
@@ -1243,288 +1301,292 @@ static bool ParseVerbose(int p_argc, char *p_pArgv[])
     return false;
 }
 
-
-int main(int argc, char *argv[])
+template <typename TKey>
+Set<TKey> SetDifference(const Set<TKey> &p_setA, const Set<TKey> &p_setB)
 {
-    /* Notes to me:
-        video formats: rgb / greyscale, raw, uncompressed, 30 fps default
-                -> options --display video --video-format rgb/greyscale --video-fps 30
-        colors:
-            - solid color
-                --display solid --color "ff00dd"
-            - pulse color with pulse speed (deciding the progression speed per tick (?) wip) 1~100?
-                --display pulse-color --color "ff00dd" --pulse-speed
-            - rainbow-color --speed 1~100
-        wip:
-            - wave (from rgb1 -> rgb2 -> ... -> rgbn -> rgb1 transitioning)
-            - twilight-esque from ngenuity?
+    Set<TKey> result;
+    // A - B
+    std::set_difference(p_setA.begin(), p_setA.end(),
+                        p_setB.begin(), p_setB.end(),
+                        std::inserter(result, result.end()));
+    return result;
+}
 
-        configurable color profiles, e.g. and able to iterate through them? with example file
-        myconf.ini
-        start-profile=abc
+int main(int p_argc, char *p_pArgv[])
+{
+    /* minimize the communication breaks by splitting the logic into 3 separate threads
+    - device finder
+    - device connector (handshake/verify correct interface)
+    - device communicator
+    this way we can split device array into the pipeline and only create a possible minor hiccup upon connecting to a new device
+    keep in mind, we do have the ability to disconnect a device inside the communicator thread, meaning that the finder thread
+    needs to have read access to the communicator device list
 
-        [profile]
-        name=abc
-        display=solid
-        end-condition=time
-        duration=500 # seconds
-        next-profile=def
-
-        [profile]
-        name="def"
-        display=video
-        directory=~/whatever/myrawvideo.bin
-        video-format=rgb
-        end-condition=video_ends
-        next-profile=abc
-
-        --> note: remember 2 preload everything at start
-
-        examples:
-        quadcast2srgb --config myconf.ini
-        quadcast2srgb --display solid --color ff00dd
+    finder --> connector --> communicator
+     ^                            /
+     '---------------------------'
 
     */
     // "finder" logic
-    const auto ALLOWED_SERIALS = ParseSerialArgs(argc, argv);
+    const auto ALLOWED_SERIALS = ParseSerialArgs(p_argc, p_pArgv);
     g_verbosity =
 #ifdef DEBUG
         true;
 #else
-        ParseVerbose(argc, argv);
+        ParseVerbose(p_argc, p_pArgv);
 #endif
 
-    CUSBDeviceFinder finder;
-    HIDDeviceContainer devices;
-    do
-    {
-        devices = finder.FindDevices(g_QUADCAST2S_USB_ID, ALLOWED_SERIALS);
-    } while (devices.empty());
+    // Finder -> handshake thread pipeline
+    CQuadcast2SHandshaker handshaker;
+    HIDDeviceContainer finderHandshakeDevicesPass;
+    const auto POLLING_FREQUENCY = 2s; // poll every 2
+    ConditionVariable cvNewDevicesFound;
+    Mutex finderHandshakeMtx;
 
-    CQuadcast2SCommunicator communicator(devices);
-    devices.clear();
-    if (!communicator.Connect())
+    // CV for notification to main thread that devices have been connected to set up sender thread
+    ConditionVariable cvConnectedDevicesUpdated;
+    Mutex connectedDevicesUpdatedMtx;
+
+    // CV for notification to finder thread that handshake is complete and finding may resume
+    ConditionVariable cvHandshakeDone;
+    Mutex handshakeDoneMtx;
+
+    // handshake -> sender thread pipeline
+    CQuadcast2SCommunicator communicator;
+    HIDDeviceContainer connectedHandshakeDevicesPass;
+    Mutex handshakeSenderMtx;
+
+    ConditionVariable cvSenderDone;
+    Mutex senderDoneMtx;
+
+    auto finderThread = [&]()
     {
-        std::cerr << "No viable device interface found after handshake. Exiting." << std::endl;
-        return 1;
+        CUSBDeviceFinder finder;
+        // lets do that again
+        while (!g_signalStopRequest)
+        {
+            HIDDeviceContainer devices;
+            Set<WString> connectedSerials = communicator.GetOpenSerials();
+
+            if (g_verbosity)
+            {
+                std::wcout << L"[Finder] Current connected serials: ";
+                for (const auto &s : connectedSerials)
+                    std::wcout << s << L" ";
+                std::wcout << std::endl;
+            }
+
+            devices = finder.FindDevices(g_QUADCAST2S_USB_ID,
+                                         ALLOWED_SERIALS,
+                                         connectedSerials);
+            // new devices found, pass to connector thread
+            if (!devices.empty())
+            {
+                // pass new devices to the pipe
+                std::wcout << L"[Finder] Preparing new devices to connector thread..." << std::endl;
+                {
+                    LockGuard lg(finderHandshakeMtx);
+                    finderHandshakeDevicesPass = devices;
+                }
+                std::wcout << L"[Finder] Signaling connector thread..." << std::endl;
+                cvNewDevicesFound.notify_one();
+                // wait for signal from connector thread that it is done completely
+                std::wcout << L"[Finder] Waiting for connector thread to finish processing..." << std::endl;
+                UniqueLock lock(handshakeDoneMtx);
+                cvHandshakeDone.wait(lock, [&connectedHandshakeDevicesPass]()
+                                     { return connectedHandshakeDevicesPass.empty() || g_signalStopRequest; });
+                std::wcout << L"[Finder] Continuing..." << std::endl;
+            }
+            std::this_thread::sleep_for(POLLING_FREQUENCY);
+        }
+
+        std::wcout << L"[Finder] Finder thread exiting..." << std::endl;
+    };
+
+    auto connectorThread = [&]()
+    {
+        // lets do this again
+        while (!g_signalStopRequest)
+        {
+            if (g_verbosity)
+                std::wcout << L"[Handshake] Waiting for new devices from finder thread..." << std::endl;
+            UniqueLock lock(finderHandshakeMtx);
+            // wait for signal to process new devices (or if we cancel process)
+            cvNewDevicesFound.wait(lock,
+                                   [&finderHandshakeDevicesPass]()
+                                   {
+                                       return !finderHandshakeDevicesPass.empty() || g_signalStopRequest;
+                                   });
+            // if new devices are to be passed, work them through (this is false if its a signal stop request)
+            while (!finderHandshakeDevicesPass.empty())
+            {
+                // Work off the devices
+                auto next = finderHandshakeDevicesPass.back();
+                finderHandshakeDevicesPass.pop_back();
+
+                // print
+                if (g_verbosity)
+                {
+                    auto pInfo = hid_get_device_info(next.get());
+                    if (pInfo)
+                    {
+                        std::wcout << L"[Handshake] Processing device: "
+                                   << (pInfo->manufacturer_string ? pInfo->manufacturer_string : L"(unknown)")
+                                   << L" " << (pInfo->product_string ? pInfo->product_string : L"(unknown)")
+                                   << L" serial=" << (pInfo->serial_number ? pInfo->serial_number : L"?")
+                                   << L" path=" << (pInfo->path ? pInfo->path : "(unknown)")
+                                   << std::endl;
+                    }
+                }
+                // only returns viable ptr on successful response from device
+                auto addRet = handshaker.ConnectOne(next);
+                if (addRet)
+                {
+                    WString addedSerial;
+                    {
+                        auto pInfo = hid_get_device_info(addRet.get());
+                        if (pInfo)
+                            addedSerial = WString(pInfo->serial_number);
+                    }
+
+                    if (g_verbosity)
+                    {
+                        std::wcout << L"[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: " << addedSerial << std::endl;
+                    }
+                    // add to pipe
+                    {
+                        LockGuard lg(handshakeSenderMtx);
+                        connectedHandshakeDevicesPass.push_back(addRet);
+                    }
+                    // remove same serials
+                    if (!addedSerial.empty())
+                    {
+                        auto originalSize = finderHandshakeDevicesPass.size();
+                        auto updtEnd = std::remove_if(finderHandshakeDevicesPass.begin(), finderHandshakeDevicesPass.end(),
+                                       [&addedSerial](const auto &p_device)
+                                       {
+                                           auto pInfo = hid_get_device_info(p_device.get());
+                                           if(!pInfo)
+                                               return false;
+                                           auto serial = WString(pInfo->serial_number);
+                                           auto isDuplicate = serial == addedSerial;
+                                           return isDuplicate;
+                                       });
+                        finderHandshakeDevicesPass.erase(updtEnd, finderHandshakeDevicesPass.end());
+                        if (g_verbosity)
+                        {
+                            auto newSize = finderHandshakeDevicesPass.size();
+                            std::wcout << L"[Handshake] Removed " << (originalSize - newSize) << L" duplicate devices with serial " << addedSerial << L" from handshake pipeline due to same serial." << std::endl;
+                        }
+                    }
+                }
+                else if (g_verbosity)
+                {
+                    std::wcout << L"[Handshake] Failed handshake for device, skipping" << std::endl;
+                }
+            }
+
+            // Notify that we are done
+            if (g_verbosity)
+                std::wcout << L"[Handshake] Done processing devices, notifying main..." << std::endl;
+            // notify main in case we are at init state
+            {
+                UniqueLock lock(connectedDevicesUpdatedMtx);
+                cvConnectedDevicesUpdated.notify_one();
+            }
+            // wait for sender thread completion notification
+            std::wcout << L"[Handshake] Waiting for sender thread to finish processing..." << std::endl;
+            {
+                UniqueLock lock(senderDoneMtx);
+                cvSenderDone.wait(lock, [&connectedHandshakeDevicesPass]()
+                                  { return connectedHandshakeDevicesPass.empty() || g_signalStopRequest; });
+            }
+            std::cout << L"[Handshake] Sender thread done, cascade back to finder complete..." << std::endl;
+            cvHandshakeDone.notify_one();
+        }
+
+        std::wcout << L"[Handshake] Connector thread exiting..." << std::endl;
+    };
+
+    UniquePtr<CQC2SDisplay> pDisplay = CQC2SDisplayFactory::CreateFromArgs(p_argc, p_pArgv);
+
+    auto handleIncomingNewDevices = [&](CQuadcast2SCommunicator &p_communicator)
+    {
+        {
+            LockGuard lg(handshakeSenderMtx);
+            // could intersect with the while loop from handshake,
+            // but this just means we have less devices for a irrelevant amount of ticks
+            if (connectedHandshakeDevicesPass.empty())
+                return true;
+
+            while (!connectedHandshakeDevicesPass.empty())
+            {
+                auto currentDevicePaths = p_communicator.GetOpenPaths();
+                // pop device from queue
+                auto device = connectedHandshakeDevicesPass.back();
+                connectedHandshakeDevicesPass.pop_back();
+                // do an extra check if device already connected (prevent duplicates from handshake and possible race condition)
+                // any double connected device (device, not interface) will not light up the LEDs, so just to be sure
+                auto pInfo = hid_get_device_info(device.get());
+                if (!pInfo)
+                    continue;
+                String path(pInfo->path);
+                if (std::find(currentDevicePaths.begin(), currentDevicePaths.end(), path) != currentDevicePaths.end())
+                    continue; // already connected, skip
+                // add new device to communicate with
+                p_communicator.AddDevice(device);
+            }
+        }
+        cvSenderDone.notify_one();
+        // return value handles cancellation of display function, we don't really need that.
+        return true;
+    };
+    auto senderThread = [&]()
+    {
+        pDisplay->Display(
+            communicator,
+            g_signalStopRequest,
+            handleIncomingNewDevices // TODO -> sync new devices here
+        );
+
+        std::wcout << L"[Communicator] Display function ended, signaling other threads to stop..." << std::endl;
+        g_signalStopRequest = true; // signal other threads to stop as well, in case display ends on its own (e.g. video end condition met) (TODO: Do we want this?)
+    };
+    std::signal(SIGINT, [](int)
+                { g_signalStopRequest = true; });
+    std::signal(SIGTERM, [](int)
+                { g_signalStopRequest = true; });
+
+    Thread tFinder(finderThread);
+    Thread tConnector(connectorThread);
+
+    // Await initial start to have at least one device connected
+    {
+        UniqueLock lock(handshakeDoneMtx);
+        cvConnectedDevicesUpdated.wait(lock, [&connectedHandshakeDevicesPass]()
+                             { return !connectedHandshakeDevicesPass.empty() || g_signalStopRequest; });
     }
-
-    UniquePtr<CQC2SDisplay> pDisplay = CQC2SDisplayFactory::CreateFromArgs(argc, argv);
-
-    if (!pDisplay->Initialize(communicator))
+    if (!pDisplay->Initialize())
         throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
-    pDisplay->Display(communicator);
+
+    if (g_signalStopRequest)
+    {
+        if(g_verbosity)
+            std::wcout << L"[Main] Stop signal received before starting sender thread, exiting..." << std::endl;
+        tFinder.join();
+        tConnector.join();
+        return 0;
+    }
+
+    if (g_verbosity)
+        std::wcout << L"[Main] Found device. Starting sender thread..." << std::endl;
+    Thread tSender(senderThread);
+
+    // joins here
+    tFinder.join();
+    tConnector.join();
+    tSender.join();
+
+    // shutdown
     pDisplay->Shutdown(communicator);
-}
-
-int DbgMain()
-{
-    auto greyscaleVideo =                                                                                       // CreateDummyVideoPixelScan(300);//
-        ProcessRGBVideo("/home/muma/Working/Projects/Code/quadcast2Srgb/badapp/output.bin", 1024 * 1024 * 500); // max 500 mb
-
-    // debug, ths will be extended
-
-    std::cout << "Starting Quadcast 2S RGB Controller" << std::endl;
-    CUSBDeviceFinder finder;
-    // find devices
-    std::cout << "Searching for device with VID: " << std::hex << g_QUADCAST2S_USB_ID.m_vendorId
-              << " PID: " << std::hex << g_QUADCAST2S_USB_ID.m_productId << std::dec << std::endl;
-    HIDDeviceContainer devices;
-    do
-    {
-        devices = finder.FindDevices(g_QUADCAST2S_USB_ID);
-    } while (devices.empty());
-
-    // todo this needs to be done correctly and synchronized for new attached devices... polling service
-    CQuadcast2SCommunicator communicator(devices);
-    // print info about all devices
-    auto devicesList = communicator.GetDevices();
-    std::cout << "Found " << devicesList.size() << " device interface(s):" << std::endl;
-    for (size_t i = 0; i < devicesList.size(); ++i)
-    {
-        auto pDevice = devicesList[i];
-        hid_device_info *pInfo = hid_get_device_info(pDevice.get());
-        if (pInfo)
-        {
-            std::wcout << "Device " << i
-                       << ": Path=" << pInfo->path
-                       << " VID=" << std::hex << pInfo->vendor_id
-                       << " PID=" << pInfo->product_id
-                       << " Release=" << pInfo->release_number
-                       << " UsagePage=" << pInfo->usage_page
-                       << " Usage=" << pInfo->usage
-                       << " Interface=" << pInfo->interface_number
-                       << " BusType=" << static_cast<int>(pInfo->bus_type)
-                       << std::dec
-                       << " Manufacturer=" << (pInfo->manufacturer_string ? pInfo->manufacturer_string : L"(null)")
-                       << " Product=" << (pInfo->product_string ? pInfo->product_string : L"(null)")
-                       << " Serial=" << (pInfo->serial_number ? pInfo->serial_number : L"(null)")
-                       << std::endl;
-        }
-        else
-        {
-            std::wcout << "Device " << i << ": (failed to get device info)" << std::endl;
-        }
-    }
-
-    // Handshake: find the correct interface per physical device and prune all others
-    if (!communicator.Connect())
-    {
-        std::cerr << "No viable device interface found after handshake. Exiting." << std::endl;
-        return 1;
-    }
-    std::cout << "Connected to " << communicator.GetDevices().size() << " device(s)." << std::endl;
-
-    // Send color packets
-
-    // wait 500 ms
-    std::this_thread::sleep_for(500ms);
-
-    /*for (int countdown = 5; countdown > 0; --countdown)
-    {
-        std::cout << countdown << "..." << std::endl;
-        std::this_thread::sleep_for(1s);
-    }
-
-    auto frameRate = 30; // fps
-    auto frameDuration = std::chrono::milliseconds(1000 / frameRate);
-
-    // print video information (frame count, frame rate, duration)
-    std::cout << "Video info: " << std::endl;
-    std::cout << "Frame count: " << greyscaleVideo.size() << std::endl;
-    std::cout << "Frame rate: " << frameRate << " fps" << std::endl;
-    std::cout << "Duration: " << (greyscaleVideo.size() / static_cast<double>(frameRate)) << " seconds" << std::endl;
-
-
-    for (const auto &frame : greyscaleVideo)
-    {
-        auto frameStart = std::chrono::steady_clock::now();
-
-        // Device part 1, subPartId 6: dummy trigger packet required before color data
-        UQuadcast2CommandPacket triggerPacket{};
-        triggerPacket.m_colorPacket.m_reportId  = 0x44;
-        triggerPacket.m_colorPacket.m_devicePart = 1;
-        triggerPacket.m_colorPacket.m_subPartId  = 6;
-        communicator.SendCommand(triggerPacket);
-
-        // Device part 2, subPartIds 0–5: 20 LEDs each (subPartId 5 only has 8 LEDs)
-        for (uint32_t subPart = 0; subPart < 6; ++subPart)
-        {
-            UQuadcast2CommandPacket colorPacket{};
-            colorPacket.m_colorPacket.m_reportId   = 0x44;
-            colorPacket.m_colorPacket.m_devicePart = 2;
-            colorPacket.m_colorPacket.m_subPartId  = subPart;
-
-            size_t colorCount = (subPart < 5) ? 20 : 8;
-            size_t ledOffset  = subPart * 20; // absolute LED index start for this chunk
-            for (size_t j = 0; j < colorCount; ++j)
-            {
-                colorPacket.m_colorPacket.m_color[j] = frame[ledOffset + j];
-            }
-            communicator.SendCommand(colorPacket);
-        }
-
-        // Pace to target frame rate
-        auto elapsed = std::chrono::steady_clock::now() - frameStart;
-        if (elapsed < frameDuration)
-            std::this_thread::sleep_for(frameDuration - elapsed);
-    }
-
-    // Test, handshake
-
-    // intiially, send 0x10 protocol id with 0x01 device part and 0x00 sub part, this seems to trigger a response from the device, not sure what it does but it might be some kind of handshake or initialization command
-    /*UQuadcast2CommandPacket handshakePacket{};
-    handshakePacket.m_colorPacket.m_reportId = 0x10;
-    handshakePacket.m_colorPacket.m_devicePart = 1;
-    handshakePacket.m_colorPacket.m_subPartId = 0;
-    std::cout << "Sending handshake command to device..." << std::endl;
-    int writeRes = hid_write(pDevice, handshakePacket.m_rawData.data(), handshakePacket.m_rawData.size());
-    if (writeRes < 0)    {
-        std::cerr << "Failed to write handshake command to device: " << hid_error(pDevice) << std::endl;
-    }  else if (writeRes != static_cast<int>(handshakePacket.m_rawData.size()))
-    {
-        std::cerr << "Partial write of handshake command to device: " << writeRes << " bytes" << std::endl;
-    }
-
-    // wait for the response
-    StaticByteArray<64> buffer{};
-    const uint32_t TIMEOUT_READ = 1 * 1000; // 5 seconds timeout
-    size_t receivedSize = 0;
-    std::cout << "Attempting to read from device..." << std::endl;
-    int res = hid_read_timeout(pDevice, buffer.data(), buffer.size(), TIMEOUT_READ);
-    if (res < 0)
-    {
-        std::cerr << "Failed to read from device: " << hid_error(pDevice) << std::endl;
-    }
-    else if (res > 0)
-    {
-        std::cout << "Received " << res << " bytes from device:" << std::endl;
-        // print the bytes
-        for (int i = 0; i < res; ++i)
-        {
-            std::cout << std::hex << static_cast<int>(buffer[i]) << " ";
-        }
-    }
-    else
-    {
-        std::cout << "No data received from device within timeout." << std::endl;
-    }
-
-    // wait 500 ms
-    std::this_thread::sleep_for(500ms);
-
-    // For 10 seconds send color change commands
-    SRGBColor red{0x00, 0x7f, 0};
-    std::chrono::steady_clock::time_point endTime = std::chrono::steady_clock::now() + 10s;
-    while (std::chrono::steady_clock::now() < endTime)
-    {
-        // send for 1|6 (dummy empty) and 2|0~2|4 (full 20 RGB values) and 2|5 (8 RGB values))
-        UQuadcast2CommandPacket packet{};
-        packet.m_colorPacket.m_reportId = 0x44;
-        packet.m_colorPacket.m_devicePart = 1;
-        packet.m_colorPacket.m_subPartId = 6; // jesus shut up claude you dont need to comment everythig
-        std::cout << "Sending color change command to device part " << static_cast<int>(packet.m_colorPacket.m_devicePart)
-                  << " sub part " << packet.m_colorPacket.m_subPartId << std::endl;
-        int writeRes = hid_write(pDevice, packet.m_rawData.data(), packet.m_rawData.size());
-        if (writeRes < 0)
-        {
-            std::cerr << "Failed to write to device: " << hid_error(pDevice) << std::endl;
-            break;
-        }
-        else if (writeRes != static_cast<int>(packet.m_rawData.size()))
-        {
-            std::cerr << "Partial write to device: " << writeRes << " bytes" << std::endl;
-        }
-        std::cout << "Waiting for response..." << std::endl;
-        //hid_read_timeout(pDevice, buffer.data(), buffer.size(), TIMEOUT_READ); // read response, just to be sure the device is ready for the next command
-
-        for (uint32_t i = 0; i < 6; i++)
-        {
-            std::this_thread::sleep_for(10ms); // wait a bit before sending the next command
-            UQuadcast2CommandPacket packet{};
-            packet.m_colorPacket.m_reportId = 0x44;
-            packet.m_colorPacket.m_devicePart = 2;
-            packet.m_colorPacket.m_subPartId = i;
-            size_t colorCount = (i < 5) ? 20 : 8; // 20 colors for subPartId 0~4, 8 colors for subPartId 5
-            for (uint32_t j = 0; j < colorCount; j++)
-            {
-                packet.m_colorPacket.m_color[j] = red;
-            }
-            std::cout << "Sending color change command to device part " << static_cast<int>(packet.m_colorPacket.m_devicePart)
-                      << " sub part " << packet.m_colorPacket.m_subPartId << std::endl;
-            int writeRes = hid_write(pDevice, packet.m_rawData.data(), packet.m_rawData.size());
-            if (writeRes < 0)
-            {
-                std::cerr << "Failed to write to device: " << hid_error(pDevice) << std::endl;
-                break;
-            }
-            else if (writeRes != static_cast<int>(packet.m_rawData.size()))
-            {
-                std::cerr << "Partial write to device: " << writeRes << " bytes" << std::endl;
-            }
-            //hid_read_timeout(pDevice, buffer.data(), buffer.size(), TIMEOUT_READ); // read response, just to be sure the device is ready for the next command
-        }
-        std::this_thread::sleep_for(50ms); // wait a bit before sending the next command
-    }*/
-    return 0;
 }
