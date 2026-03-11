@@ -25,7 +25,7 @@
 #include <set>
 #include <csignal>
 
-#define DEBUG 1
+//#define DEBUG 1
 
 using namespace std::chrono_literals;
 using Thread = std::thread;
@@ -323,16 +323,6 @@ public:
     }
 };
 
-// ---------------------------------------------------------------------------
-// CUSBDeviceFinder
-//
-// Owns the HID API lifetime (hid_init / hid_exit).
-// FindDevices   — enumerate and open *all* matching interfaces.
-// EnumerateNew  — same, but skips paths already tracked by the communicator
-//                 so that live devices are never re-opened and disconnected
-//                 devices automatically become re-discoverable once the
-//                 communicator drops their handle.
-// ---------------------------------------------------------------------------
 class CUSBDeviceFinder
 {
     bool m_isInitialized = false;
@@ -363,16 +353,6 @@ public:
         const SUSBID &p_usbId,
         const Option<Set<WString>> &p_allowedSerials = std::nullopt,
         const Option<Set<WString>> &p_ignoredSerials = std::nullopt)
-    {
-        return EnumerateNew(p_usbId, p_ignoredSerials, p_allowedSerials);
-    }
-
-    // Open every interface whose path is NOT in p_activePaths.
-    // Caller supplies the active-path set from CQuadcast2SCommunicator::GetOpenPaths().
-    static HIDDeviceContainer EnumerateNew(
-        const SUSBID &p_usbId,
-        const Option<Set<WString>> &p_ignoredSerials = std::nullopt,
-        const Option<Set<WString>> &p_allowedSerials = std::nullopt)
     {
         hid_device_info *pList = hid_enumerate(p_usbId.m_vendorId, p_usbId.m_productId);
         HIDDeviceContainer found;
@@ -1342,6 +1322,7 @@ int main(int p_argc, char *p_pArgv[])
     const auto POLLING_FREQUENCY = 2s; // poll every 2
     ConditionVariable cvNewDevicesFound;
     Mutex finderHandshakeMtx;
+    bool handshakeBatchDone = true; // true when handshake is idle/done with current batch
 
     // CV for notification to main thread that devices have been connected to set up sender thread
     ConditionVariable cvConnectedDevicesUpdated;
@@ -1355,6 +1336,7 @@ int main(int p_argc, char *p_pArgv[])
     CQuadcast2SCommunicator communicator;
     HIDDeviceContainer connectedHandshakeDevicesPass;
     Mutex handshakeSenderMtx;
+    bool senderBatchDone = true; // true when sender is idle/done with current batch
 
     ConditionVariable cvSenderDone;
     Mutex senderDoneMtx;
@@ -1388,13 +1370,17 @@ int main(int p_argc, char *p_pArgv[])
                     LockGuard lg(finderHandshakeMtx);
                     finderHandshakeDevicesPass = devices;
                 }
+                {
+                    LockGuard lg(handshakeDoneMtx);
+                    handshakeBatchDone = false; // new batch submitted
+                }
                 std::wcout << L"[Finder] Signaling connector thread..." << std::endl;
                 cvNewDevicesFound.notify_one();
                 // wait for signal from connector thread that it is done completely
                 std::wcout << L"[Finder] Waiting for connector thread to finish processing..." << std::endl;
                 UniqueLock lock(handshakeDoneMtx);
-                cvHandshakeDone.wait(lock, [&connectedHandshakeDevicesPass]()
-                                     { return connectedHandshakeDevicesPass.empty() || g_signalStopRequest; });
+                cvHandshakeDone.wait(lock, [&]()
+                                     { return handshakeBatchDone || g_signalStopRequest.load(); });
                 std::wcout << L"[Finder] Continuing..." << std::endl;
             }
             std::this_thread::sleep_for(POLLING_FREQUENCY);
@@ -1417,6 +1403,9 @@ int main(int p_argc, char *p_pArgv[])
                                    {
                                        return !finderHandshakeDevicesPass.empty() || g_signalStopRequest;
                                    });
+
+            if (g_verbosity)
+                std::wcout << L"[Handshake] Received signal from finder thread, processing devices..." << std::endl;
             // if new devices are to be passed, work them through (this is false if its a signal stop request)
             while (!finderHandshakeDevicesPass.empty())
             {
@@ -1489,20 +1478,21 @@ int main(int p_argc, char *p_pArgv[])
             // Notify that we are done
             if (g_verbosity)
                 std::wcout << L"[Handshake] Done processing devices, notifying main..." << std::endl;
+            
+            // Mark handshake batch as complete before notifying sender
+            {
+                LockGuard lg(handshakeDoneMtx);
+                handshakeBatchDone = true;
+            }
+            cvHandshakeDone.notify_one();
+            
             // notify main in case we are at init state
             {
                 UniqueLock lock(connectedDevicesUpdatedMtx);
                 cvConnectedDevicesUpdated.notify_one();
             }
-            // wait for sender thread completion notification
-            std::wcout << L"[Handshake] Waiting for sender thread to finish processing..." << std::endl;
-            {
-                UniqueLock lock(senderDoneMtx);
-                cvSenderDone.wait(lock, [&connectedHandshakeDevicesPass]()
-                                  { return connectedHandshakeDevicesPass.empty() || g_signalStopRequest; });
-            }
-            std::cout << L"[Handshake] Sender thread done, cascade back to finder complete..." << std::endl;
-            cvHandshakeDone.notify_one();
+            
+            // No need to wait for sender anymore - finder will wait on handshakeBatchDone
         }
 
         std::wcout << L"[Handshake] Connector thread exiting..." << std::endl;
@@ -1519,6 +1509,8 @@ int main(int p_argc, char *p_pArgv[])
             if (connectedHandshakeDevicesPass.empty())
                 return true;
 
+            if (g_verbosity)
+                std::wcout << L"[Sender] New devices received from handshake thread, adding to communicator..." << std::endl;
             while (!connectedHandshakeDevicesPass.empty())
             {
                 auto currentDevicePaths = p_communicator.GetOpenPaths();
@@ -1534,10 +1526,18 @@ int main(int p_argc, char *p_pArgv[])
                 if (std::find(currentDevicePaths.begin(), currentDevicePaths.end(), path) != currentDevicePaths.end())
                     continue; // already connected, skip
                 // add new device to communicate with
+                
+                if (g_verbosity){
+                    WString serial = pInfo->serial_number ? WString(pInfo->serial_number) : L"(unknown)";
+                    std::wcout << L"[Sender] Adding device " << serial << L" to communicator." << std::endl;
+                }
                 p_communicator.AddDevice(device);
             }
         }
-        cvSenderDone.notify_one();
+
+        if (g_verbosity)
+            std::wcout << L"[Sender] Done processing new devices." << std::endl;
+        // No need to signal back - handshake already marked itself done
         // return value handles cancellation of display function, we don't really need that.
         return true;
     };
@@ -1562,9 +1562,9 @@ int main(int p_argc, char *p_pArgv[])
 
     // Await initial start to have at least one device connected
     {
-        UniqueLock lock(handshakeDoneMtx);
-        cvConnectedDevicesUpdated.wait(lock, [&connectedHandshakeDevicesPass]()
-                             { return !connectedHandshakeDevicesPass.empty() || g_signalStopRequest; });
+        UniqueLock lock(connectedDevicesUpdatedMtx);
+        cvConnectedDevicesUpdated.wait(lock, [&]()
+                             { return !connectedHandshakeDevicesPass.empty() || g_signalStopRequest.load(); });
     }
     if (!pDisplay->Initialize())
         throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
