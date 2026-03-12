@@ -103,6 +103,9 @@ int main(int p_argc, char *p_pArgv[])
             }
             std::this_thread::sleep_for(POLLING_FREQUENCY);
         }
+        // leaving is only possible if we do not wait. (potential dead lock risk)
+        // Sender should not be able to block complete handshake pipeline at this time too because of this predicate
+        cvNewDevicesFound.notify_all();
 
         std::wcout << L"[Finder] Finder thread exiting..." << std::endl;
     };
