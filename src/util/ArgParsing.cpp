@@ -5,7 +5,11 @@ Option<SRGBColor> ParseHexColor(String p_colorStr)
 {
     if (!p_colorStr.empty() && p_colorStr[0] == '#')
         p_colorStr = p_colorStr.substr(1);
-    if (p_colorStr.size() != 6)
+    if (
+        // accept ff00ff or ff00ff00 (alpha omitted)
+        (p_colorStr.size() != 6 && p_colorStr.size() != 8)
+        // validate that all characters are hex digits
+        || p_colorStr.find_first_not_of("0123456789abcdefABCDEF") != String::npos)
         return std::nullopt;
     try
     {

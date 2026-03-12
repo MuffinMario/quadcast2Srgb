@@ -31,3 +31,9 @@ Just check the main() function inside the yet not organized Main.cpp,
     pDisplay->Shutdown(communicator);
 ```
 This example finds all usb device interfaces for the quadcast 2s and communicates with them synchronously and at the same time. The colors displayed here will be #00ffff (aqua) for 3 seconds, #3c10ff (violet/blue tone) and then pulsing permanently on #1010c5 (deep blue) 
+
+# TODO / New Display ideas?
+- GLSL shader?
+- Voice volume based response / interface
+- Lua(JIT) interface for customization (including all features of the program)
+- color transitions with pulse (e.g. #ff0000 to -> #00ff00)

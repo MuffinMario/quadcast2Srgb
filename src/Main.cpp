@@ -6,9 +6,45 @@
 #include "communicator/CQuadcast2SCommunicator.h"
 #include "display/CQC2SDisplayFactory.h"
 #include "util/ArgParsing.h"
+#include "util/ConfigParser.h"
 
 #include <csignal>
 #include <iostream>
+
+UniquePtr<CQC2SDisplay>  CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool& p_outVerbosity, Option<Set<WString>>& p_outAllowedSerials)
+{
+    // Check if we have a config defined
+    auto configPathOpt = CConfigParser::ParseConfigPathArg(p_argc, p_pArgv);
+    if (configPathOpt.has_value())
+    {
+        try
+        {
+            CConfigParser configParser(configPathOpt.value());
+            auto parseResult = configParser.Parse();
+            if (!parseResult.m_pDisplay)
+            {
+                std::cerr << "Config parsing failed: no startup display defined." << std::endl;
+                return nullptr;
+            }
+            // if either option (arg or config) is verbose or config verbose is true, we want verbose on
+            p_outVerbosity.store(parseResult.m_verbose | p_outVerbosity.load());
+            // dont overwrite if they were passed via args
+            if (!p_outAllowedSerials.has_value() && parseResult.m_allowedSerials.has_value() && !parseResult.m_allowedSerials->empty())
+                p_outAllowedSerials = parseResult.m_allowedSerials;
+            else if(parseResult.m_allowedSerials.has_value())
+                std::cerr << "[Main] Ignoring allowed serials from config because they were also passed via command line arguments." << std::endl;
+            return std::move(parseResult.m_pDisplay);
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "Failed to parse config: " << e.what() << std::endl;
+            return nullptr;
+        }
+    }
+    else {
+        return CQC2SDisplayFactory::CreateFromArgs(p_argc, p_pArgv);
+    }
+}
 
 int main(int p_argc, char *p_pArgv[])
 {
@@ -26,13 +62,16 @@ int main(int p_argc, char *p_pArgv[])
 
     */
     // "finder" logic
-    const auto ALLOWED_SERIALS = ParseSerialArgs(p_argc, p_pArgv);
+    auto allowedSerials = ParseSerialArgs(p_argc, p_pArgv);
     g_verbosity =
 #ifdef DEBUG
         true;
 #else
         ParseVerbose(p_argc, p_pArgv);
 #endif
+
+    UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv,g_verbosity, allowedSerials);
+    
 
     // Finder -> handshake thread pipeline
     CQuadcast2SHandshaker handshaker;
@@ -77,7 +116,7 @@ int main(int p_argc, char *p_pArgv[])
             }
 
             devices = finder.FindDevices(g_QUADCAST2S_USB_ID,
-                                         ALLOWED_SERIALS,
+                                         allowedSerials,
                                          connectedSerials);
             // new devices found, pass to connector thread
             if (!devices.empty())
@@ -219,7 +258,6 @@ int main(int p_argc, char *p_pArgv[])
         std::wcout << L"[Handshake] Connector thread exiting..." << std::endl;
     };
 
-    UniquePtr<CQC2SDisplay> pDisplay = CQC2SDisplayFactory::CreateFromArgs(p_argc, p_pArgv);
 
     auto handleIncomingNewDevices = [&](CQuadcast2SCommunicator &p_communicator)
     {
