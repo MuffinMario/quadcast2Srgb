@@ -10,7 +10,7 @@ Type=notify
 ExecStart=/usr/bin/qc2srgb --config %h/.config/quadcast2srgb/config.toml
 Restart=on-failure
 RestartSec=5s
-# watchdog — systemd kills+restarts if no WATCHDOG=1 within 10s
+# watchdog - systemd kills+restarts if no WATCHDOG=1 within 10s
 # we set this in the active finder thread to signal we're still alive (maybe instead: inside sender?)
 WatchdogSec=10s
 TimeoutStopSec=3s

@@ -19,7 +19,7 @@ class CQuadcast2SCommunicator
         if (writeRes < 0)
         {
             LOG_ERROR(L"Failed to write to device: " << hid_error(p_device.get())
-                      << L" — removing from list.");
+                      << L" - removing from list.");
             RemoveDevice(p_device);
         }
         else if (writeRes != static_cast<int>(p_size))

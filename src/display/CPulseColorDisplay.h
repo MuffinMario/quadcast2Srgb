@@ -1,11 +1,12 @@
 #pragma once
 
 #include "CQC2SDisplay.h"
+#include "DisplayUtils.h"
 #include <cmath>
 #include <chrono>
 #include <thread>
 
-// Cubic Bézier easing — CSS-style: implicit P0=(0,0), P3=(1,1).
+// Cubic Bézier easing - CSS-style: implicit P0=(0,0), P3=(1,1).
 // p_p1 and p_p2 are the two inner control points.
 // Given a linear parameter t in [0,1], solves for the Bézier curve parameter s
 // such that X(s) == t using Newton–Raphson, then returns Y(s) as the eased value.
@@ -93,25 +94,7 @@ public:
         const auto FRAME_START = steady_clock::now();
 
         SRGBColor current = ApplyBrightness(CubicBezierEval(m_bezier, m_t));
-        UQuadcast2CommandPacket triggerPacket{};
-        triggerPacket.m_colorPacket.m_reportId = 0x44;
-        triggerPacket.m_colorPacket.m_devicePart = 1;
-        triggerPacket.m_colorPacket.m_subPartId = 6;
-        p_communicator.SendCommand(triggerPacket);
-
-        for (uint32_t subPart = 0; subPart < 6; ++subPart)
-        {
-            size_t colorCount = (subPart < 5) ? 20 : 8;
-            UQuadcast2CommandPacket colorPacket{};
-            colorPacket.m_colorPacket.m_reportId = 0x44;
-            colorPacket.m_colorPacket.m_devicePart = 2;
-            colorPacket.m_colorPacket.m_subPartId = subPart;
-
-            for (size_t j = 0; j < colorCount; ++j)
-                colorPacket.m_colorPacket.m_color[j] = current;
-
-            p_communicator.SendCommand(colorPacket);
-        }
+        SendMonoColorFrame(p_communicator, current);
 
         if (m_increasing)
         {
