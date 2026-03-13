@@ -1,37 +1,57 @@
 # Quadcast 2S RGB
-Tool to communicate with the HyperX Quadcast 2S's 108 RGB diodes.
-HEAVY WIP! Yet, functional. 
-Just check the main() function inside the yet not organized Main.cpp,
-```cpp
-    CUSBDeviceFinder finder;
-    HIDDeviceContainer devices;
-    do
-    {
-        devices = finder.FindDevices(g_QUADCAST2S_USB_ID);
-    } while (devices.empty());
+Currently too lazy to write the readme.
 
-    CQuadcast2SCommunicator communicator(devices);
-    devices.clear();
-    if (!communicator.Connect())
-    {
-        std::cerr << "No viable device interface found after handshake. Exiting." << std::endl;
-        return 1;
-    }
+Check out this example config
+```toml
 
-    UniquePtr<CQC2SDisplay> pDisplay = pMultiDisplay->AddDisplay(
-        CQC2SDisplayFactory::CreateSolidColor({0x00, 0xff, 0xff}, "solid1", std::make_unique<CTimeEndCondition>(3s),"solid2"));
-    pMultiDisplay->AddDisplay(
-        CQC2SDisplayFactory::CreateSolidColor({0x3c, 0x10, 0xff}, "solid2", std::make_unique<CTimeEndCondition>(5s),"pulse1"));
-    pMultiDisplay->AddDisplay(
-        CQC2SDisplayFactory::CreatePulseColor({0x10, 0x10, 0xc5},0.025,"pulse1",nullptr));
+# required, must reference a display added below
+startup-display = "Solid"
+# optional, defaults to false
+# verbose = true
+# optional, defaults to [], this way you can restrict the program to only connect to a specific serial, in case you have multiple ones.
+#                       IF YOU HAVE MULTIPLE DEVICES FEEL FREE TO CONTACT ME! (I cannot test this myself) https://github.com/MuffinMario/quadcast2Srgb
+# allowed-serials = ["12345678", "87654321"]
 
-    if (!pDisplay->Initialize(communicator))
-        throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
-    pDisplay->Display(communicator);
-    pDisplay->Shutdown(communicator);
+[[display]]
+# required
+type = "solid"
+name = "Solid"
+end-condition = { type = "time", duration-ms = 5000 } # optional, if not given display will repeat endlessly
+next-display = "Pulse1" # optional, defaults to empty, meaning this display will be the end of the sequence
+# end-condition = { type = "time", duration-ms = 5000 } # optional, if not given display will repeat endlessly
+# optional, defaults to "#290066" the hash is optional, only here for vscode color picker
+# color = "#290066ff" # since vscode color picker adds alpha, it can be included. however it is just ignored.
+
+
+[[display]]
+type = "pulse-color"
+name = "Pulse1"
+next-display = "Pulse2"
+# optional, but you probably want to customize this.
+# color = "#290066"
+end-condition = { type = "time", duration-ms = 4050 } # optional, if not given display will repeat endlessly
+# optional, for custom values check out a generator, e.g. https://cubic-bezier.com
+# cubic-bezier = [0.25, 0.1, 0.25, 1.0] # defaults to custom ease in out
+# pulse speed is basically the step progress from 0 to 1 in 50ms intervals, meaning we have 20 steps per second
+# pulse-speed = 0.025 # optional, defaults to 0.025, bigger number => faster progression.
+
+
+[[display]]
+type = "pulse-color"
+name = "Pulse2"
+next-display = "Pulse1"
+# optional, but you probably want to customize this.
+color = "#861e27ff"
+end-condition = { type = "time", duration-ms = 2050 } # optional, if not given display will repeat endlessly
+cubic-bezier = [0.25, 0.1, 0.25, 1.0]
+pulse-speed = 0.05
+
 ```
-This example finds all usb device interfaces for the quadcast 2s and communicates with them synchronously and at the same time. The colors displayed here will be #00ffff (aqua) for 3 seconds, #3c10ff (violet/blue tone) and then pulsing permanently on #1010c5 (deep blue) 
+Creates a static light for 5s, and then loops between pulsing indigo & 2x as fast pulsing crimson red forever.
+Can be called via `qc2srgb --config example_config.toml`
 
+If you hate configs, you can also `qc2srgb --display solid --color 140040` for single display types.
+`--serial ABCDE123` can also be used as a param to only include one singular serial. AYou can also chain it multiple times,
 # TODO / New Display ideas?
 - GLSL shader?
 - Voice volume based response / interface
