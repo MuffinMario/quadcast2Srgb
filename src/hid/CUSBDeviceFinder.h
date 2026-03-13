@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HIDTypes.h"
+#include "../Globals.h"
 #include <algorithm>
 
 class CUSBDeviceFinder
@@ -25,7 +26,7 @@ public:
         {
             int ret = hid_exit();
             if (ret != 0)
-                std::cerr << "Failed to exit HID API: " << ret << std::endl;
+                LOG_ERROR(L"Failed to exit HID API: " << ret);
         }
     }
 

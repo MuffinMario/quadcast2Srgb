@@ -1,7 +1,7 @@
 #include "CQC2SDisplayFactory.h"
 #include "../util/ArgParsing.h"
 #include "../video/VideoProcessing.h"
-#include <iostream>
+#include "../Globals.h"
 
 UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateSolidColor(SRGBColor p_color, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay)
 {
@@ -37,7 +37,7 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
     for (int i = 1; i < p_argc; ++i)
     {
         String arg = p_pArgv[i];
-        std::wcout << WString(arg.begin(), arg.end()) << std::endl;
+        LOG_VERBOSE(WString(arg.begin(), arg.end()) << std::endl);
         if (arg == "--display" && i + 1 < p_argc)
         {
             displayType = p_pArgv[++i];
@@ -48,7 +48,7 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
             if (parsed.has_value())
                 color = parsed.value();
             else
-                std::cerr << "Invalid --color value. Expected 6-digit hex (e.g. ff00dd)." << std::endl;
+                LOG_ERROR(L"Invalid --color value. Expected 6-digit hex (e.g. ff00dd).");
         }
         else if (arg == "--pulse-speed" && i + 1 < p_argc)
         {
@@ -77,7 +77,7 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
             else if (fmt == "rgb")
                 videoFormat = EVideoFormat::Rgb;
             else
-                std::cerr << "Unknown --video-colors value '" << fmt << "'" << std::endl;
+                LOG_ERROR(L"Unknown --video-colors value '" << WStr(fmt) << L"'");
         }
     }
 
@@ -92,7 +92,7 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
         // check video path given
         if (videoPath.empty())
         {
-            std::cerr << "--display video requires --video-path <path>. Defaulting to default color." << std::endl;
+            LOG_ERROR(L"--display video requires --video-path <path>. Defaulting to default color.");
             return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
         }
         // try to load the video and create the display
@@ -101,18 +101,18 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
             auto frames = LoadVideoBuffer(videoPath, videoFormat);
             if (frames.empty())
             {
-                std::cerr << "Video file loaded but contains no frames: " << videoPath << ". Defaulting to default color." << std::endl;
+                LOG_ERROR(L"Video file loaded but contains no frames: " << WStr(videoPath) << L". Defaulting to default color.");
                 return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
             }
             return CreateVideoDisplay(std::move(frames), videoFramerate, "video");
         }
         catch (const std::exception &e)
         {
-            std::cerr << "Failed to load video file '" << videoPath << "': " << e.what() << ". Defaulting to default color." << std::endl;
+            LOG_ERROR(L"Failed to load video file '" << WStr(videoPath) << L"': " << WStr(e.what()) << L". Defaulting to default color.");
             return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
         }
     }
 
-    std::cerr << "Unknown display type: " << displayType << ". Defaulting to default color." << std::endl;
+    LOG_ERROR(L"Unknown display type: " << WStr(displayType) << L". Defaulting to default color.");
     return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
 }

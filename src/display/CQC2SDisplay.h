@@ -21,6 +21,7 @@ public:
 
     // Called once before displaying starts; return false to abort
     virtual bool Initialize() { return true; }
+    virtual void Reset() { if (m_pEndCondition) m_pEndCondition->Reset(); }
 
     // Called once per frame; return false to stop displaying
     virtual bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) = 0;
@@ -39,7 +40,7 @@ public:
         // check for end condition
         if (m_pEndCondition.get())
         {
-            m_pEndCondition->Reset();
+            Reset();
             do
             {
                 if (p_frameCallback && !p_frameCallback(p_communicator))

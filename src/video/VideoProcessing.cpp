@@ -1,5 +1,5 @@
 #include "VideoProcessing.h"
-#include <iostream>
+#include "../Globals.h"
 #include <stdexcept>
 
 VideoFrameBuffer AlignIndicesOnVideo(const VideoFrameBuffer &p_frames)
@@ -41,7 +41,7 @@ VideoFrameBuffer ProcessGreyscaleVideo(String p_path, size_t p_maxFileSize)
     uint32_t frameCount = fileSize / g_LED_COUNT;
     if (fileSize % g_LED_COUNT != 0)
     {
-        std::cerr << "Warning: video file size (" << fileSize << " bytes) is not a multiple of LED count (" << g_LED_COUNT << " bytes). The last " << (fileSize % g_LED_COUNT) << " bytes will be discarded." << std::endl;
+        LOG_ERROR(L"Warning: video file size (" << fileSize << L" bytes) is not a multiple of LED count (" << g_LED_COUNT << L" bytes). The last " << (fileSize % g_LED_COUNT) << L" bytes will be discarded.");
     }
     file.seekg(0, std::ios::beg);
 
@@ -89,8 +89,8 @@ VideoFrameBuffer ProcessRGBVideo(String p_path, size_t p_maxFileSize)
     }
     if (fileSize % g_RGB_FRAME_SIZE != 0)
     {
-        std::cerr << "Warning: RGB video file size (" << fileSize << " bytes) is not a multiple of frame size ("
-                  << g_RGB_FRAME_SIZE << " bytes). The last " << (fileSize % g_RGB_FRAME_SIZE) << " bytes will be discarded." << std::endl;
+        LOG_ERROR(L"Warning: RGB video file size (" << fileSize << L" bytes) is not a multiple of frame size ("
+                  << g_RGB_FRAME_SIZE << L" bytes). The last " << (fileSize % g_RGB_FRAME_SIZE) << L" bytes will be discarded.");
     }
     uint32_t frameCount = static_cast<uint32_t>(fileSize / g_RGB_FRAME_SIZE);
     file.seekg(0, std::ios::beg);

@@ -9,11 +9,26 @@
             "problemMatcher": []
         },
         {
+            "label": "CMake Configure (systemd)",
+            "type": "shell",
+            "command": "cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DUSE_SYSTEMD=ON",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
             "label": "CMake Build",
             "type": "shell",
             "command": "cmake --build build",
             "group": "build",
             "dependsOn": "CMake Configure",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake Build (systemd)",
+            "type": "shell",
+            "command": "cmake --build build",
+            "group": "build",
+            "dependsOn": "CMake Configure (systemd)",
             "problemMatcher": []
         }
     ]

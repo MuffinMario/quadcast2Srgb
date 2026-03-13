@@ -11,7 +11,38 @@
 #include <csignal>
 #include <iostream>
 
-UniquePtr<CQC2SDisplay>  CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool& p_outVerbosity, Option<Set<WString>>& p_outAllowedSerials)
+#ifdef USE_SYSTEMD
+#include <systemd/sd-daemon.h>
+void NotifySystemdReady()
+{
+    LOG_VERBOSE(L"READY=1 NOTIFY...");
+    sd_notify(0, "READY=1");
+}
+void NotifySystemdWatchdog()
+{
+    sd_notify(0, "WATCHDOG=1");
+}
+void NotifySystemdStopping()
+{
+    LOG_VERBOSE(L"STOPPING=1 NOTIFY...");
+    sd_notify(0, "STOPPING=1");
+}
+#define SYSTEMD_NOTIFY_READY NotifySystemdReady()
+#define SYSTEMD_NOTIFY_WATCHDOG NotifySystemdWatchdog()
+#define SYSTEMD_NOTIFY_STOPPING NotifySystemdStopping()
+#define SYSTEMD_WATCHDOG_DECL_USEC(varname) \
+    uint64_t varname = 0;                \
+    sd_watchdog_enabled(0, &varname)
+#define SYSTEMD_WATCHDOG_INTERVAL_SEC(varname) std::chrono::seconds(varname / 1000000)
+#else
+#define SYSTEMD_NOTIFY_READY
+#define SYSTEMD_NOTIFY_WATCHDOG
+#define SYSTEMD_NOTIFY_STOPPING
+#define SYSTEMD_WATCHDOG_DECL_USEC(varname)
+#define SYSTEMD_WATCHDOG_INTERVAL_SEC(varname) std::chrono::seconds(9999999);
+#endif
+
+UniquePtr<CQC2SDisplay> CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool &p_outVerbosity, Option<Set<WString>> &p_outAllowedSerials)
 {
     // Check if we have a config defined
     auto configPathOpt = CConfigParser::ParseConfigPathArg(p_argc, p_pArgv);
@@ -23,7 +54,7 @@ UniquePtr<CQC2SDisplay>  CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool& 
             auto parseResult = configParser.Parse();
             if (!parseResult.m_pDisplay)
             {
-                std::cerr << "Config parsing failed: no startup display defined." << std::endl;
+                LOG_ERROR(L"Config parsing failed: no startup display defined.");
                 return nullptr;
             }
             // if either option (arg or config) is verbose or config verbose is true, we want verbose on
@@ -31,17 +62,18 @@ UniquePtr<CQC2SDisplay>  CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool& 
             // dont overwrite if they were passed via args
             if (!p_outAllowedSerials.has_value() && parseResult.m_allowedSerials.has_value() && !parseResult.m_allowedSerials->empty())
                 p_outAllowedSerials = parseResult.m_allowedSerials;
-            else if(parseResult.m_allowedSerials.has_value())
-                std::cerr << "[Main] Ignoring allowed serials from config because they were also passed via command line arguments." << std::endl;
+            else if (parseResult.m_allowedSerials.has_value())
+                LOG_ERROR(L"[Main] Ignoring allowed serials from config because they were also passed via command line arguments.");
             return std::move(parseResult.m_pDisplay);
         }
         catch (const std::exception &e)
         {
-            std::cerr << "Failed to parse config: " << e.what() << std::endl;
+            LOG_ERROR(L"Failed to parse config: " << WStr(e.what()));
             return nullptr;
         }
     }
-    else {
+    else
+    {
         return CQC2SDisplayFactory::CreateFromArgs(p_argc, p_pArgv);
     }
 }
@@ -70,8 +102,7 @@ int main(int p_argc, char *p_pArgv[])
         ParseVerbose(p_argc, p_pArgv);
 #endif
 
-    UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv,g_verbosity, allowedSerials);
-    
+    UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv, g_verbosity, allowedSerials);
 
     // Finder -> handshake thread pipeline
     CQuadcast2SHandshaker handshaker;
@@ -107,13 +138,9 @@ int main(int p_argc, char *p_pArgv[])
             HIDDeviceContainer devices;
             Set<WString> connectedSerials = communicator.GetOpenSerials();
 
-            if (g_verbosity)
-            {
-                std::wcout << L"[Finder] Current connected serials: ";
-                for (const auto &s : connectedSerials)
-                    std::wcout << s << L" ";
-                std::wcout << std::endl;
-            }
+            LOG_VERBOSE(L"[Finder] Current connected serials: ");
+            for (const auto &s : connectedSerials)
+                LOG_VERBOSE(s << L" ");
 
             devices = finder.FindDevices(g_QUADCAST2S_USB_ID,
                                          allowedSerials,
@@ -122,7 +149,7 @@ int main(int p_argc, char *p_pArgv[])
             if (!devices.empty())
             {
                 // pass new devices to the pipe
-                std::wcout << L"[Finder] Preparing new devices to connector thread..." << std::endl;
+                LOG_VERBOSE(L"[Finder] Preparing new devices to connector thread..." << std::endl);
                 {
                     LockGuard lg(finderHandshakeMtx);
                     finderHandshakeDevicesPass = devices;
@@ -131,14 +158,14 @@ int main(int p_argc, char *p_pArgv[])
                     LockGuard lg(handshakeDoneMtx);
                     handshakeBatchDone = false; // new batch submitted
                 }
-                std::wcout << L"[Finder] Signaling connector thread..." << std::endl;
+                LOG_VERBOSE(L"[Finder] Signaling connector thread..." << std::endl);
                 cvNewDevicesFound.notify_one();
                 // wait for signal from connector thread that it is done completely
-                std::wcout << L"[Finder] Waiting for connector thread to finish processing..." << std::endl;
+                LOG_VERBOSE(L"[Finder] Waiting for connector thread to finish processing..." << std::endl);
                 UniqueLock lock(handshakeDoneMtx);
                 cvHandshakeDone.wait(lock, [&]()
                                      { return handshakeBatchDone || g_signalStopRequest.load(); });
-                std::wcout << L"[Finder] Continuing..." << std::endl;
+                LOG_VERBOSE(L"[Finder] Continuing..." << std::endl);
             }
             std::this_thread::sleep_for(POLLING_FREQUENCY);
         }
@@ -146,7 +173,7 @@ int main(int p_argc, char *p_pArgv[])
         // Sender should not be able to block complete handshake pipeline at this time too because of this predicate
         cvNewDevicesFound.notify_all();
 
-        std::wcout << L"[Finder] Finder thread exiting..." << std::endl;
+        LOG(L"[Finder] Finder thread exiting..." << std::endl);
     };
 
     auto connectorThread = [&]()
@@ -154,8 +181,7 @@ int main(int p_argc, char *p_pArgv[])
         // lets do this again
         while (!g_signalStopRequest)
         {
-            if (g_verbosity)
-                std::wcout << L"[Handshake] Waiting for new devices from finder thread..." << std::endl;
+            LOG_VERBOSE(L"[Handshake] Waiting for new devices from finder thread..." << std::endl);
             UniqueLock lock(finderHandshakeMtx);
             // wait for signal to process new devices (or if we cancel process)
             cvNewDevicesFound.wait(lock,
@@ -164,8 +190,7 @@ int main(int p_argc, char *p_pArgv[])
                                        return !finderHandshakeDevicesPass.empty() || g_signalStopRequest;
                                    });
 
-            if (g_verbosity)
-                std::wcout << L"[Handshake] Received signal from finder thread, processing devices..." << std::endl;
+            LOG_VERBOSE(L"[Handshake] Received signal from finder thread, processing devices..." << std::endl);
             // if new devices are to be passed, work them through (this is false if its a signal stop request)
             while (!finderHandshakeDevicesPass.empty())
             {
@@ -174,7 +199,6 @@ int main(int p_argc, char *p_pArgv[])
                 finderHandshakeDevicesPass.pop_back();
 
                 // print
-                if (g_verbosity)
                 {
                     auto pInfo = hid_get_device_info(next.get());
                     if (pInfo)
@@ -197,11 +221,8 @@ int main(int p_argc, char *p_pArgv[])
                         if (pInfo)
                             addedSerial = WString(pInfo->serial_number);
                     }
+                    LOG(L"[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: " << addedSerial << std::endl);
 
-                    if (g_verbosity)
-                    {
-                        std::wcout << L"[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: " << addedSerial << std::endl;
-                    }
                     // add to pipe
                     {
                         LockGuard lg(handshakeSenderMtx);
@@ -212,32 +233,30 @@ int main(int p_argc, char *p_pArgv[])
                     {
                         auto originalSize = finderHandshakeDevicesPass.size();
                         auto updtEnd = std::remove_if(finderHandshakeDevicesPass.begin(), finderHandshakeDevicesPass.end(),
-                                       [&addedSerial](const auto &p_device)
-                                       {
-                                           auto pInfo = hid_get_device_info(p_device.get());
-                                           if (!pInfo)
-                                               return false;
-                                           auto serial = WString(pInfo->serial_number);
-                                           auto isDuplicate = serial == addedSerial;
-                                           return isDuplicate;
-                                       });
+                                                      [&addedSerial](const auto &p_device)
+                                                      {
+                                                          auto pInfo = hid_get_device_info(p_device.get());
+                                                          if (!pInfo)
+                                                              return false;
+                                                          auto serial = WString(pInfo->serial_number);
+                                                          auto isDuplicate = serial == addedSerial;
+                                                          return isDuplicate;
+                                                      });
                         finderHandshakeDevicesPass.erase(updtEnd, finderHandshakeDevicesPass.end());
-                        if (g_verbosity)
                         {
                             auto newSize = finderHandshakeDevicesPass.size();
-                            std::wcout << L"[Handshake] Removed " << (originalSize - newSize) << L" duplicate devices with serial " << addedSerial << L" from handshake pipeline due to same serial." << std::endl;
+                            LOG_VERBOSE(L"[Handshake] Removed " << (originalSize - newSize) << L" duplicate devices with serial " << addedSerial << L" from handshake pipeline due to same serial." << std::endl);
                         }
                     }
                 }
-                else if (g_verbosity)
+                else
                 {
-                    std::wcout << L"[Handshake] Failed handshake for device, skipping" << std::endl;
+                    LOG(L"[Handshake] Failed handshake for device, skipping" << std::endl);
                 }
             }
 
             // Notify that we are done
-            if (g_verbosity)
-                std::wcout << L"[Handshake] Done processing devices, notifying main..." << std::endl;
+            LOG_VERBOSE(L"[Handshake] Done processing devices, notifying main..." << std::endl);
 
             // Mark handshake batch as complete before notifying finder
             {
@@ -255,12 +274,26 @@ int main(int p_argc, char *p_pArgv[])
             // No need to wait for sender anymore - finder will wait on handshakeBatchDone
         }
 
-        std::wcout << L"[Handshake] Connector thread exiting..." << std::endl;
+        LOG(L"[Handshake] Connector thread exiting..." << std::endl);
     };
 
-
+    auto lastWatchdogNotify = std::chrono::steady_clock::now();
+    SYSTEMD_WATCHDOG_DECL_USEC(WATCHDOG_INTERVAL_VAR);
+    const auto WATCHDOG_INTERVAL = SYSTEMD_WATCHDOG_INTERVAL_SEC(WATCHDOG_INTERVAL_VAR);
     auto handleIncomingNewDevices = [&](CQuadcast2SCommunicator &p_communicator)
     {
+#ifdef USE_SYSTEMD
+        // Watchdog enabled => notify on time
+        if(WATCHDOG_INTERVAL_VAR > 0)
+        {
+            std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+            if (now - lastWatchdogNotify >= WATCHDOG_INTERVAL)
+            {
+                SYSTEMD_NOTIFY_WATCHDOG;
+                lastWatchdogNotify = now;
+            }
+        }
+#endif
         {
             LockGuard lg(handshakeSenderMtx);
             // could intersect with the while loop from handshake,
@@ -268,8 +301,7 @@ int main(int p_argc, char *p_pArgv[])
             if (connectedHandshakeDevicesPass.empty())
                 return true;
 
-            if (g_verbosity)
-                std::wcout << L"[Sender] New devices received from handshake thread, adding to communicator..." << std::endl;
+            LOG_VERBOSE(L"[Sender] New devices received from handshake thread, adding to communicator..." << std::endl);
             while (!connectedHandshakeDevicesPass.empty())
             {
                 auto currentDevicePaths = p_communicator.GetOpenPaths();
@@ -286,17 +318,15 @@ int main(int p_argc, char *p_pArgv[])
                     continue; // already connected, skip
                 // add new device to communicate with
 
-                if (g_verbosity)
                 {
                     WString serial = pInfo->serial_number ? WString(pInfo->serial_number) : L"(unknown)";
-                    std::wcout << L"[Sender] Adding device " << serial << L" to communicator." << std::endl;
+                    LOG_VERBOSE(L"[Sender] Adding device " << serial << L" to communicator." << std::endl);
                 }
                 p_communicator.AddDevice(device);
             }
         }
 
-        if (g_verbosity)
-            std::wcout << L"[Sender] Done processing new devices." << std::endl;
+        LOG_VERBOSE(L"[Sender] Done processing new devices." << std::endl);
         // No need to signal back - handshake already marked itself done
         // return value handles cancellation of display function, we don't really need that.
         return true;
@@ -309,7 +339,7 @@ int main(int p_argc, char *p_pArgv[])
             g_signalStopRequest,
             handleIncomingNewDevices);
 
-        std::wcout << L"[Communicator] Display function ended, signaling other threads to stop..." << std::endl;
+        LOG_VERBOSE(L"[Communicator] Display function ended, signaling other threads to stop..." << std::endl);
         g_signalStopRequest = true; // signal other threads to stop as well, in case display ends on its own (e.g. video end condition met)
     };
 
@@ -317,6 +347,11 @@ int main(int p_argc, char *p_pArgv[])
                 { g_signalStopRequest = true; });
     std::signal(SIGTERM, [](int)
                 { g_signalStopRequest = true; });
+
+    if (!pDisplay->Initialize())
+        throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
+
+    SYSTEMD_NOTIFY_READY;
 
     Thread tFinder(finderThread);
     Thread tConnector(connectorThread);
@@ -328,20 +363,17 @@ int main(int p_argc, char *p_pArgv[])
                                        { return !connectedHandshakeDevicesPass.empty() || g_signalStopRequest.load(); });
     }
 
-    if (!pDisplay->Initialize())
-        throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
-
     if (g_signalStopRequest)
     {
-        if (g_verbosity)
-            std::wcout << L"[Main] Stop signal received before starting sender thread, exiting..." << std::endl;
+        LOG(L"[Main] Stop signal received before starting sender thread, exiting..." << std::endl);
         tFinder.join();
         tConnector.join();
-        return 0;
+
+        SYSTEMD_NOTIFY_STOPPING;
+        return EXIT_SUCCESS;
     }
 
-    if (g_verbosity)
-        std::wcout << L"[Main] Found device. Starting sender thread..." << std::endl;
+    LOG(L"[Main] Found device. Starting sender thread..." << std::endl);
     Thread tSender(senderThread);
 
     // joins here
@@ -350,5 +382,7 @@ int main(int p_argc, char *p_pArgv[])
     tSender.join();
 
     // shutdown
+    SYSTEMD_NOTIFY_STOPPING;
     pDisplay->Shutdown(communicator);
+    return EXIT_SUCCESS;
 }

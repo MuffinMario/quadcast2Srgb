@@ -34,7 +34,7 @@ public:
             p_communicator.SendCommand(colorPacket);
             // TBI: Receive response
         }
-        std::this_thread::sleep_for(50ms);
+        std::this_thread::sleep_for(50ms); // solid doesnt need perfect delta timing, so w/e
         return true;
     }
 };

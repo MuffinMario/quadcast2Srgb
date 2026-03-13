@@ -9,9 +9,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Generates compile_commands.json for clangd / VS Code IntelliSense
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # library requirements
 find_package(hidapi REQUIRED)
 #find_package(flatbuffers REQUIRED)
+
+# systemd integration (opt-in via -DUSE_SYSTEMD=ON)
+option(USE_SYSTEMD "Enable systemd integration" OFF)
+
+if(USE_SYSTEMD)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SYSTEMD libsystemd)
+endif()
 
 # Clang-Tidy integration (opt-out via -DENABLE_CLANG_TIDY=OFF)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" ON)
@@ -37,10 +48,14 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
     hidapi::hidapi
-    #flatbuffers::flatbuffers
 )
 
-# Copy example_config.toml next to the built executable
+
+if(USE_SYSTEMD)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${SYSTEMD_LIBRARIES})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SYSTEMD)
+endif()
+
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

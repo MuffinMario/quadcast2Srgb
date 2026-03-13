@@ -38,17 +38,19 @@ name = "Pulse1"
 next-display = "Pulse2"
 # optional, but you probably want to customize this.
 # color = "#290066"
-end-condition = { type = "time", duration-ms = 5000 } # optional, if not given display will repeat endlessly
+end-condition = { type = "time", duration-ms = 4050 } # optional, if not given display will repeat endlessly
 # optional, for custom values check out a generator, e.g. https://cubic-bezier.com
 # cubic-bezier = [0.25, 0.1, 0.25, 1.0] # defaults to custom ease in out
-# pulse-speed = 0.025 # optional, defaults to 0.025, bigger number => faster progression
+# pulse speed is basically the step progress from 0 to 1 in 50ms intervals, meaning we have 20 steps per second
+# pulse-speed = 0.025 # optional, defaults to 0.025, bigger number => faster progression.
+
 
 [[display]]
 type = "pulse-color"
 name = "Pulse2"
 next-display = "Pulse1"
 # optional, but you probably want to customize this.
-color = "#0c6600"
-end-condition = { type = "time", duration-ms = 5000 } # optional, if not given display will repeat endlessly
+color = "#861e27ff"
+end-condition = { type = "time", duration-ms = 2050 } # optional, if not given display will repeat endlessly
 cubic-bezier = [0.25, 0.1, 0.25, 1.0]
 pulse-speed = 0.05

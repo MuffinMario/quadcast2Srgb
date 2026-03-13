@@ -69,7 +69,7 @@ public:
         }
         auto elapsed = std::chrono::steady_clock::now() - frameStart;
         #ifdef DEBUG
-                //std::wcout << "Displayed frame " << m_currentFrame << " / " << m_frames.size() << " elapsed " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << " ms" << std::endl;
+                //LOG_VERBOSE("Displayed frame " << m_currentFrame << " / " << m_frames.size() << " elapsed " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << " ms" << std::endl);
         #endif
         // advance frame, looping when end of video is reached, end condition is decided outside...
         m_currentFrame = (m_currentFrame + 1) % m_frames.size();

@@ -2,6 +2,7 @@
 
 #include "CQC2SDisplay.h"
 #include <cmath>
+#include <chrono>
 #include <thread>
 
 // Cubic Bézier easing — CSS-style: implicit P0=(0,0), P3=(1,1).
@@ -78,8 +79,19 @@ public:
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
           m_baseColor(p_color), m_speed(p_speed), m_bezier(p_bezier) {}
 
+    void Reset() override
+    {
+        m_t = 0.0f;
+        m_increasing = true;
+        
+        CQC2SDisplay::Reset(); 
+    }
     bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
     {
+        using namespace std::chrono;
+        const auto FRAME_DURATION = 50ms;
+        const auto FRAME_START = steady_clock::now();
+
         SRGBColor current = ApplyBrightness(CubicBezierEval(m_bezier, m_t));
         UQuadcast2CommandPacket triggerPacket{};
         triggerPacket.m_colorPacket.m_reportId = 0x44;
@@ -120,7 +132,12 @@ public:
             }
         }
 
-        std::this_thread::sleep_for(50ms);
+        const auto ELAPSED = steady_clock::now() - FRAME_START;
+        auto remaining = FRAME_DURATION - ELAPSED;
+        if (remaining > remaining.zero())
+        {
+            std::this_thread::sleep_for(remaining);
+        }
         return true;
     }
 };

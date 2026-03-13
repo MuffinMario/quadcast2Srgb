@@ -23,7 +23,6 @@ public:
         int writeRes = hid_write(p_device.get(), pkt.m_rawData.data(), pkt.m_rawData.size());
         if (writeRes < 0)
         {
-            if (g_verbosity)
                 std::wcerr << L"[Handshake] Write failed: " << hid_error(p_device.get()) << std::endl;
             return nullptr;
         }
@@ -33,15 +32,13 @@ public:
 
         if (readRes < 0)
         {
-            if (g_verbosity)
                 std::wcerr << L"[Handshake] Read failed: " << hid_error(p_device.get()) << std::endl;
             return nullptr;
         }
 
         if (readRes != static_cast<int>(sizeof(UQuadcast2CommandPacket)))
         {
-            if (g_verbosity)
-                std::wcout << L"[Handshake] Incomplete response: got " << readRes << L" bytes." << std::endl;
+                LOG_VERBOSE(L"[Handshake] Incomplete response: got " << readRes << L" bytes." << std::endl);
 
             return nullptr;
         }
@@ -49,7 +46,6 @@ public:
         const auto *pResp = reinterpret_cast<const UQuadcast2CommandPacket *>(buf.data());
         if (pResp->m_responsePacket.m_reportId != 0x11)
         {
-            if (g_verbosity)
                 std::wcout << L"[Handshake] Unexpected reportId=0x"
                            << std::hex << static_cast<int>(pResp->m_responsePacket.m_reportId)
                            << std::dec << std::endl;

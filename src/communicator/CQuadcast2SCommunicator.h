@@ -1,10 +1,10 @@
 #pragma once
 
 #include "../Common.h"
+#include "../Globals.h"
 #include "../hid/HIDTypes.h"
 #include "../hid/Packets.h"
 #include <algorithm>
-#include <iostream>
 
 class CQuadcast2SCommunicator
 {
@@ -18,13 +18,13 @@ class CQuadcast2SCommunicator
         int writeRes = hid_write(p_device.get(), p_pData, p_size);
         if (writeRes < 0)
         {
-            std::cerr << "Failed to write to device: " << hid_error(p_device.get())
-                      << " — removing from list." << std::endl;
+            LOG_ERROR(L"Failed to write to device: " << hid_error(p_device.get())
+                      << L" — removing from list.");
             RemoveDevice(p_device);
         }
         else if (writeRes != static_cast<int>(p_size))
         {
-            std::cerr << "Partial write to device: " << writeRes << " bytes" << std::endl;
+            LOG_ERROR(L"Partial write to device: " << writeRes << L" bytes");
         }
         return writeRes;
     }
