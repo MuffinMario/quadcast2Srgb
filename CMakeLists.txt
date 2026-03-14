@@ -45,6 +45,9 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     -Wall
     -Wextra
     -Wpedantic
+
+    $<$<CONFIG:Debug>:-fno-omit-frame-pointer>
+    $<$<CONFIG:RelWithDebInfo>:-fno-omit-frame-pointer>
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
     hidapi::hidapi

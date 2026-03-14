@@ -30,6 +30,21 @@
             "group": "build",
             "dependsOn": "CMake Configure (systemd)",
             "problemMatcher": []
+        },
+        {
+            "label": "CMake Configure (profiling)",
+            "type": "shell",
+            "command": "cmake -S . -B build-profiling -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_SYSTEMD=ON",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake Build (profiling)",
+            "type": "shell",
+            "command": "cmake --build build-profiling",
+            "group": "build",
+            "dependsOn": "CMake Configure (profiling)",
+            "problemMatcher": []
         }
     ]
 }

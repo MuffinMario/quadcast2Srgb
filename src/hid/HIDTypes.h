@@ -27,11 +27,9 @@ struct SHIDDeviceDeleter
 #if DEBUG
             hid_device_info *pInfo = hid_get_device_info(p_pDev);
             if (pInfo)
-                LOG_VERBOSE("Closing device: ");
             {
-                LOG_VERBOSE(pInfo->manufacturer_string << " " << pInfo->product_string << " (VID: " << std::hex << pInfo->vendor_id << " PID: " << pInfo->product_id << std::dec << " Serial: " << pInfo->serial_number << ")");
+                LOG_VERBOSE("Closing device: " << pInfo->manufacturer_string << " " << pInfo->product_string << " (VID: " << std::hex << pInfo->vendor_id << " PID: " << pInfo->product_id << std::dec << " Serial: " << pInfo->serial_number << ")");
             }
-            LOG_VERBOSE(std::endl);
 #endif
             hid_close(p_pDev);
         }

@@ -33,13 +33,24 @@ void NotifySystemdStopping()
 #define SYSTEMD_WATCHDOG_DECL_USEC(varname) \
     uint64_t varname = 0;                \
     sd_watchdog_enabled(0, &varname)
-#define SYSTEMD_WATCHDOG_INTERVAL_SEC(varname) std::chrono::seconds(varname / 1000000)
+#define SYSTEMD_WATCHDOG_INTERVAL(varname) std::chrono::microseconds(varname / 1000000)
+#define SYSTEMD_NOTIFY_WATCHDOG_IF_DUE(interval, lastNotify) \
+    do { \
+        if ((interval).count() > 0) { \
+            auto now = std::chrono::steady_clock::now(); \
+            if (now - (lastNotify) >= (interval)) { \
+                SYSTEMD_NOTIFY_WATCHDOG; \
+                (lastNotify) = now; \
+            } \
+        } \
+    } while(0)
 #else
 #define SYSTEMD_NOTIFY_READY
 #define SYSTEMD_NOTIFY_WATCHDOG
 #define SYSTEMD_NOTIFY_STOPPING
 #define SYSTEMD_WATCHDOG_DECL_USEC(varname)
-#define SYSTEMD_WATCHDOG_INTERVAL_SEC(varname) std::chrono::seconds(9999999);
+#define SYSTEMD_WATCHDOG_INTERVAL(varname) std::chrono::microseconds(0);
+#define SYSTEMD_NOTIFY_WATCHDOG_IF_DUE(interval, lastNotify)
 #endif
 
 UniquePtr<CQC2SDisplay> CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool &p_outVerbosity, Option<Set<WString>> &p_outAllowedSerials)
@@ -149,7 +160,7 @@ int main(int p_argc, char *p_pArgv[])
             if (!devices.empty())
             {
                 // pass new devices to the pipe
-                LOG_VERBOSE(L"[Finder] Preparing new devices to connector thread..." << std::endl);
+                LOG_VERBOSE(L"[Finder] Preparing new devices to connector thread..." );
                 {
                     LockGuard lg(finderHandshakeMtx);
                     finderHandshakeDevicesPass = devices;
@@ -158,14 +169,14 @@ int main(int p_argc, char *p_pArgv[])
                     LockGuard lg(handshakeDoneMtx);
                     handshakeBatchDone = false; // new batch submitted
                 }
-                LOG_VERBOSE(L"[Finder] Signaling connector thread..." << std::endl);
+                LOG_VERBOSE(L"[Finder] Signaling connector thread..." );
                 cvNewDevicesFound.notify_one();
                 // wait for signal from connector thread that it is done completely
-                LOG_VERBOSE(L"[Finder] Waiting for connector thread to finish processing..." << std::endl);
+                LOG_VERBOSE(L"[Finder] Waiting for connector thread to finish processing..." );
                 UniqueLock lock(handshakeDoneMtx);
                 cvHandshakeDone.wait(lock, [&]()
                                      { return handshakeBatchDone || g_signalStopRequest.load(); });
-                LOG_VERBOSE(L"[Finder] Continuing..." << std::endl);
+                LOG_VERBOSE(L"[Finder] Continuing..." );
             }
             std::this_thread::sleep_for(POLLING_FREQUENCY);
         }
@@ -173,7 +184,7 @@ int main(int p_argc, char *p_pArgv[])
         // Sender should not be able to block complete handshake pipeline at this time too because of this predicate
         cvNewDevicesFound.notify_all();
 
-        LOG(L"[Finder] Finder thread exiting..." << std::endl);
+        LOG(L"[Finder] Finder thread exiting..." );
     };
 
     auto connectorThread = [&]()
@@ -181,7 +192,7 @@ int main(int p_argc, char *p_pArgv[])
         // lets do this again
         while (!g_signalStopRequest)
         {
-            LOG_VERBOSE(L"[Handshake] Waiting for new devices from finder thread..." << std::endl);
+            LOG_VERBOSE(L"[Handshake] Waiting for new devices from finder thread..." );
             UniqueLock lock(finderHandshakeMtx);
             // wait for signal to process new devices (or if we cancel process)
             cvNewDevicesFound.wait(lock,
@@ -190,7 +201,7 @@ int main(int p_argc, char *p_pArgv[])
                                        return !finderHandshakeDevicesPass.empty() || g_signalStopRequest;
                                    });
 
-            LOG_VERBOSE(L"[Handshake] Received signal from finder thread, processing devices..." << std::endl);
+            LOG_VERBOSE(L"[Handshake] Received signal from finder thread, processing devices..." );
             // if new devices are to be passed, work them through (this is false if its a signal stop request)
             while (!finderHandshakeDevicesPass.empty())
             {
@@ -203,12 +214,11 @@ int main(int p_argc, char *p_pArgv[])
                     auto pInfo = hid_get_device_info(next.get());
                     if (pInfo)
                     {
-                        std::wcout << L"[Handshake] Processing device: "
+                        LOG(L"[Handshake] Processing device: "
                                    << (pInfo->manufacturer_string ? pInfo->manufacturer_string : L"(unknown)")
                                    << L" " << (pInfo->product_string ? pInfo->product_string : L"(unknown)")
                                    << L" serial=" << (pInfo->serial_number ? pInfo->serial_number : L"?")
-                                   << L" path=" << (pInfo->path ? pInfo->path : "(unknown)")
-                                   << std::endl;
+                                   << L" path=" << (pInfo->path ? pInfo->path : "(unknown)"));
                     }
                 }
                 // only returns viable ptr on successful response from device
@@ -221,7 +231,7 @@ int main(int p_argc, char *p_pArgv[])
                         if (pInfo)
                             addedSerial = WString(pInfo->serial_number);
                     }
-                    LOG(L"[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: " << addedSerial << std::endl);
+                    LOG(L"[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: " << addedSerial );
 
                     // add to pipe
                     {
@@ -245,18 +255,18 @@ int main(int p_argc, char *p_pArgv[])
                         finderHandshakeDevicesPass.erase(updtEnd, finderHandshakeDevicesPass.end());
                         {
                             auto newSize = finderHandshakeDevicesPass.size();
-                            LOG_VERBOSE(L"[Handshake] Removed " << (originalSize - newSize) << L" duplicate devices with serial " << addedSerial << L" from handshake pipeline due to same serial." << std::endl);
+                            LOG_VERBOSE(L"[Handshake] Removed " << (originalSize - newSize) << L" duplicate devices with serial " << addedSerial << L" from handshake pipeline due to same serial." );
                         }
                     }
                 }
                 else
                 {
-                    LOG(L"[Handshake] Failed handshake for device, skipping" << std::endl);
+                    LOG(L"[Handshake] Failed handshake for device, skipping" );
                 }
             }
 
             // Notify that we are done
-            LOG_VERBOSE(L"[Handshake] Done processing devices, notifying main..." << std::endl);
+            LOG_VERBOSE(L"[Handshake] Done processing devices, notifying main..." );
 
             // Mark handshake batch as complete before notifying finder
             {
@@ -274,26 +284,15 @@ int main(int p_argc, char *p_pArgv[])
             // No need to wait for sender anymore - finder will wait on handshakeBatchDone
         }
 
-        LOG(L"[Handshake] Connector thread exiting..." << std::endl);
+        LOG(L"[Handshake] Connector thread exiting..." );
     };
 
     auto lastWatchdogNotify = std::chrono::steady_clock::now();
-    SYSTEMD_WATCHDOG_DECL_USEC(WATCHDOG_INTERVAL_VAR);
-    const auto WATCHDOG_INTERVAL = SYSTEMD_WATCHDOG_INTERVAL_SEC(WATCHDOG_INTERVAL_VAR);
+    SYSTEMD_WATCHDOG_DECL_USEC(watchdogIntervalVar);
+    const auto WATCHDOG_INTERVAL = SYSTEMD_WATCHDOG_INTERVAL(watchdogIntervalVar);
     auto handleIncomingNewDevices = [&](CQuadcast2SCommunicator &p_communicator)
     {
-#ifdef USE_SYSTEMD
-        // Watchdog enabled => notify on time
-        if(WATCHDOG_INTERVAL_VAR > 0)
-        {
-            std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-            if (now - lastWatchdogNotify >= WATCHDOG_INTERVAL)
-            {
-                SYSTEMD_NOTIFY_WATCHDOG;
-                lastWatchdogNotify = now;
-            }
-        }
-#endif
+        SYSTEMD_NOTIFY_WATCHDOG_IF_DUE(WATCHDOG_INTERVAL, lastWatchdogNotify);
         {
             LockGuard lg(handshakeSenderMtx);
             // could intersect with the while loop from handshake,
@@ -301,7 +300,7 @@ int main(int p_argc, char *p_pArgv[])
             if (connectedHandshakeDevicesPass.empty())
                 return true;
 
-            LOG_VERBOSE(L"[Sender] New devices received from handshake thread, adding to communicator..." << std::endl);
+            LOG_VERBOSE(L"[Sender] New devices received from handshake thread, adding to communicator..." );
             while (!connectedHandshakeDevicesPass.empty())
             {
                 auto currentDevicePaths = p_communicator.GetOpenPaths();
@@ -320,13 +319,13 @@ int main(int p_argc, char *p_pArgv[])
 
                 {
                     WString serial = pInfo->serial_number ? WString(pInfo->serial_number) : L"(unknown)";
-                    LOG_VERBOSE(L"[Sender] Adding device " << serial << L" to communicator." << std::endl);
+                    LOG_VERBOSE(L"[Sender] Adding device " << serial << L" to communicator." );
                 }
                 p_communicator.AddDevice(device);
             }
         }
 
-        LOG_VERBOSE(L"[Sender] Done processing new devices." << std::endl);
+        LOG_VERBOSE(L"[Sender] Done processing new devices." );
         // No need to signal back - handshake already marked itself done
         // return value handles cancellation of display function, we don't really need that.
         return true;
@@ -339,7 +338,7 @@ int main(int p_argc, char *p_pArgv[])
             g_signalStopRequest,
             handleIncomingNewDevices);
 
-        LOG_VERBOSE(L"[Communicator] Display function ended, signaling other threads to stop..." << std::endl);
+        LOG_VERBOSE(L"[Communicator] Display function ended, signaling other threads to stop..." );
         g_signalStopRequest = true; // signal other threads to stop as well, in case display ends on its own (e.g. video end condition met)
     };
 
@@ -365,7 +364,7 @@ int main(int p_argc, char *p_pArgv[])
 
     if (g_signalStopRequest)
     {
-        LOG(L"[Main] Stop signal received before starting sender thread, exiting..." << std::endl);
+        LOG(L"[Main] Stop signal received before starting sender thread, exiting..." );
         tFinder.join();
         tConnector.join();
 
@@ -373,7 +372,7 @@ int main(int p_argc, char *p_pArgv[])
         return EXIT_SUCCESS;
     }
 
-    LOG(L"[Main] Found device. Starting sender thread..." << std::endl);
+    LOG(L"[Main] Found device. Starting sender thread..." );
     Thread tSender(senderThread);
 
     // joins here

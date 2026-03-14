@@ -191,7 +191,7 @@
                     "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "CMake Build (systemd)",
+            "preLaunchTask": "CMake Build (profiling)",
             "sourceFileMap": {
                 "/mnt/894ab61c-871d-43b4-b97d-092fec1a49a5/home/muma/Working/Projects/Code/quadcast2Srgb": "${workspaceFolder}"
             }

@@ -37,7 +37,7 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
     for (int i = 1; i < p_argc; ++i)
     {
         String arg = p_pArgv[i];
-        LOG_VERBOSE(WString(arg.begin(), arg.end()) << std::endl);
+        LOG_VERBOSE(WString(arg.begin(), arg.end()) );
         if (arg == "--display" && i + 1 < p_argc)
         {
             displayType = p_pArgv[++i];

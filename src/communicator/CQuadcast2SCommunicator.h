@@ -118,7 +118,7 @@ public:
             int res = hid_read_timeout(snapshot[i].get(), buffer.data(), buffer.size(), p_timeout);
             if (res < 0)
             {
-                std::cerr << "Failed to read from device: " << hid_error(snapshot[i].get()) << std::endl;
+                LOG_ERROR("Failed to read from device: " << hid_error(snapshot[i].get()));
                 responses[i] = {};
             }
             else if (res > 0)

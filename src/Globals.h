@@ -14,18 +14,25 @@ constexpr SUSBID g_QUADCAST2S_USB_ID = {0x03f0, 0x02b5};
 
 #define LOG_VERBOSE(msg) \
     do { \
-        if (g_verbosity) \
-            std::wclog << msg << std::endl; \
+        if (g_verbosity) { \
+            WStringStream wss; \
+            wss << msg << L'\n'; \
+            std::wclog << wss.str(); \
+        } \
     } while(0)
 
 #define LOG_ERROR(msg) \
     do { \
-        std::wclog << L"[ERROR] " << msg << std::endl; \
+        WStringStream wss; \
+        wss << L"[ERROR] " << msg << L'\n'; \
+        std::wclog << wss.str(); \
     } while(0)
 
 #define LOG(msg) \
     do { \
-        std::wclog << msg << std::endl; \
+        WStringStream wss; \
+        wss << msg << L'\n'; \
+        std::wclog << wss.str(); \
     } while(0)
 
 // Widen a narrow string for use with std::wclog
