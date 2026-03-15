@@ -1,3 +1,9 @@
+// Copyright (c) 2026 Mario T
+// 
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
+
 #include "Common.h"
 #include "Globals.h"
 #include "hid/HIDTypes.h"

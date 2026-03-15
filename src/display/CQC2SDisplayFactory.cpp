@@ -1,3 +1,8 @@
+// Copyright (c) 2026 Mario T
+// 
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
 #include "CQC2SDisplayFactory.h"
 #include "../util/ArgParsing.h"
 #include "../video/VideoProcessing.h"
