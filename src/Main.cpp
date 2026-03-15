@@ -111,6 +111,12 @@ int main(int p_argc, char *p_pArgv[])
 
     */
     // "finder" logic
+    if (ParseHelp(p_argc, p_pArgv))
+    {
+        PrintHelp(p_argc > 0 ? p_pArgv[0] : "qc2srgb");
+        return EXIT_SUCCESS;
+    }
+
     auto allowedSerials = ParseSerialArgs(p_argc, p_pArgv);
     g_verbosity =
 #ifdef DEBUG
