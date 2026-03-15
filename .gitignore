@@ -6,3 +6,7 @@ badapp/badapple_12x9.rgbffmpeg
 badapp/output_grey.bin
 badapp/output_rgb.bin
 perf.data*
+
+# ignore PKGBUILD files except for the actual PKGBUILD file
+resources/PKGBUILD/*
+!resources/PKGBUILD/PKGBUILD

@@ -7,21 +7,26 @@ After=local-fs.target systemd-udevd.service
 [Service]
 Type=notify
 # default is to just process the config file that is being shipped
-ExecStart=/usr/bin/qc2srgb --config %h/.config/quadcast2srgb/config.toml
+ExecStart=/usr/bin/qc2srgb --config /etc/quadcast2srgb/config.toml
 Restart=on-failure
 RestartSec=5s
 # watchdog - systemd kills+restarts if no WATCHDOG=1 within 10s
 # we set this in the active finder thread to signal we're still alive (maybe instead: inside sender?)
 WatchdogSec=10s
-TimeoutStopSec=30s # stop request can take a possibly unfortunate amount of time when we have a bunch of devices queued to manage
+# stop request can take a possibly unfortunate amount of time when we have a bunch of devices queued to manage
+TimeoutStopSec=30s 
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=quadcast2srgb
 
-PrivateTmp=true # no need to expose public tmp dir
-ProtectSystem=strict # everything read only (except hidraw dev explicitly declared in rule)
-ProtectHome=read-only # only needs read perms for config
-NoNewPrivileges=true # cannot ever elevate
+# no need to expose public tmp dir
+PrivateTmp=true 
+# everything read only (except hidraw dev explicitly declared in rule)
+ProtectSystem=strict 
+# only needs read perms for config
+ProtectHome=read-only 
+# cannot ever elevate
+NoNewPrivileges=true 
 
 [Install]
 WantedBy=default.target
