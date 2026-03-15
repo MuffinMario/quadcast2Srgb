@@ -12,7 +12,7 @@ TBD, probably going to be releasing a binary in Releases with a suggested path t
 ## Linux
 
 ### Arch / AUR
-There currently is a PKGBUILD to build the project based on the latest release via `makepkg -si`. Will add it to AUR soon...
+There currently is a PKGBUILD to build the project based on the latest release via `makepkg -si` in `packages/PKGBUILD`. Will add it to AUR soon...
 
 ### Debian
 TBD
