@@ -62,7 +62,7 @@ endif()
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/example_config.toml"
+        "${CMAKE_SOURCE_DIR}/resources/config/example_config.toml"
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>/example_config.toml"
     COMMENT "Copying example_config.toml to output directory"
 )

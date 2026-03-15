@@ -1,0 +1,41 @@
+# Maintainer: Your Name <your@email.com>
+pkgname=quadcast2srgb
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Customizable RGB LED controller for HyperX Quadcast 2S"
+arch=('x86_64')
+url="https://github.com/MuffinMario/quadcast2Srgb"
+license=('MIT')
+depends=('hidapi' 'libsystemd')
+makedepends=('cmake' 'gcc' 'pkgconf')
+backup=("etc/quadcast2srgb/example_config.toml")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/MuffinMario/quadcast2Srgb/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')  # replace with actual checksum
+
+build() {
+    # build the project, striaght forward
+    cmake -B build -S "quadcast2Srgb-$pkgver" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DUSE_SYSTEMD=ON \
+    -DENABLE_CLANG_TIDY=OFF # no need we don't dev..
+
+    cmake --build build
+}
+
+package() {
+    # binary -> to /usr/bin
+    install -Dm755 "build/qc2srgb" "$pkgdir/usr/bin/qc2srgb"
+
+    # required service file
+    install -Dm644 "quadcast2Srgb-$pkgver/resources/systemd/quadcast2srgb.service" \
+    "$pkgdir/usr/lib/systemd/user/quadcast2srgb.service"
+
+    # udev rule!! (hidraw access without sudo)
+    install -Dm644 "quadcast2Srgb-$pkgver/resources/udev/99-quadcast2srgb.rules" \
+    "$pkgdir/usr/lib/udev/rules.d/99-quadcast2srgb.rules"
+
+    # Example config
+    install -Dm644 "quadcast2Srgb-$pkgver/resources/config/example_config.toml" \
+    "$pkgdir/etc/quadcast2srgb/example_config.toml"
+}

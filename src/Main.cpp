@@ -348,7 +348,10 @@ int main(int p_argc, char *p_pArgv[])
                 { g_signalStopRequest = true; });
 
     if (!pDisplay->Initialize())
-        throw std::runtime_error("Failed to initialize display: " + pDisplay->GetName());
+    {
+        LOG_ERROR(L"Failed to initialize display: " + WStr(pDisplay->GetName()));
+        return EXIT_FAILURE;
+    }
 
     SYSTEMD_NOTIFY_READY;
 
