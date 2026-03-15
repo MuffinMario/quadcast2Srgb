@@ -5,10 +5,35 @@ Currently still in early development, however it has matured enough to be able t
 
 # Installation
 
+## Windows
+
+TBD, probably going to be releasing a binary in Releases with a suggested path to build it yourself here...
+
 ## Linux
 
 ### Arch / AUR
-Currently there 
+There currently is a PKGBUILD to build the project based on the latest release via `makepkg -si`. Will add it to AUR soon...
+
+### Debian
+TBD
+
+### Manual build
+You can build the program yourself, simply by going into the root directory and running:
+
+```
+# install required packages
+./packages.sh
+
+# cmake build the project
+cmake -B build -S . \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_INSTALL_PREFIX=/usr \
+-DUSE_SYSTEMD=OFF \
+-DENABLE_CLANG_TIDY=OFF 
+
+cmake --build build
+```
+This will build the project without any systemd notification/watchdog features, you can turn them on again of course again by instead writing `-DUSE_SYSTEMD=ON`
 
 # Usage
 
