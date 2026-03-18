@@ -1,0 +1,49 @@
+name: Release
+
+# Triggers on version tags: vXXX
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-deb:
+    name: Build .deb (Debian bookworm / amd64)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create a release and upload assets
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build the .deb inside the same Debian container used locally
+      - name: Build .deb via Docker
+        run: |
+          mkdir -p packages/deb
+          docker build \
+            --target builder \
+            --tag quadcast2srgb-deb-builder \
+            -f resources/deb/Dockerfile \
+            .
+          # Extract the .deb from the image via a temporary container
+          CONTAINER=$(docker create quadcast2srgb-deb-builder /bin/true)
+          docker cp "$CONTAINER:/output/." packages/deb/
+          docker rm "$CONTAINER"
+
+      - name: List produced packages
+        run: ls -lh packages/deb/
+
+      # Create the GitHub Release and attach all .deb files as assets
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Use the pushed tag as the release name; mark as pre-release if tag contains -
+          name: "Release ${{ github.ref_name }}"
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            packages/deb/*.deb

@@ -13,7 +13,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # library requirements
-find_package(hidapi REQUIRED)
+# hidapi: prefer the CMake config (Arch ships one); fall back to pkg-config (Debian/Ubuntu)
+find_package(hidapi QUIET)
+if(hidapi_FOUND)
+    message(STATUS "hidapi found via CMake config")
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(hidapi REQUIRED IMPORTED_TARGET hidapi-hidraw)
+    add_library(hidapi::hidapi ALIAS PkgConfig::hidapi)
+    message(STATUS "hidapi found via pkg-config (hidapi-hidraw)")
+endif()
 #find_package(flatbuffers REQUIRED)
 
 # systemd integration (opt-in via -DUSE_SYSTEMD=ON)

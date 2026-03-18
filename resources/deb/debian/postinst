@@ -1,0 +1,33 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        echo ""
+        echo "==> quadcast2srgb installed."
+        echo ""
+        echo "    To enable the user service, run as the target user:"
+        echo "      systemctl --user daemon-reload"
+        echo "      systemctl --user enable --now quadcast2srgb.service"
+        echo ""
+        echo "    The service will NOT start automatically."
+        echo "    Make sure to read up on the install guide:"
+        echo "      https://github.com/MuffinMario/quadcast2Srgb"
+        echo ""
+        echo "    The udev rule was installed to /usr/lib/udev/rules.d/."
+        echo "    If the program fails to find your device, re-plug it or run:"
+        echo "      sudo udevadm control --reload"
+        echo "      sudo udevadm trigger"
+        echo ""
+    ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

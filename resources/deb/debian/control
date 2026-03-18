@@ -1,0 +1,14 @@
+Source: quadcast2srgb
+Section: utils
+Priority: optional
+Maintainer: Mario T <admin@muffinmar.io>
+Build-Depends: debhelper-compat (= 13), build-essential, cmake (>= 3.16), gcc, pkg-config, libhidapi-dev, libsystemd-dev, libtomlplusplus-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/MuffinMario/quadcast2Srgb
+
+Package: quadcast2srgb
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, libhidapi-hidraw0 | libhidapi-libusb0, libsystemd0, libtomlplusplus3
+Description: Controller for the 108 individual LEDS on the HyperX Quadcast 2S RGB
+ Supports solid colors, pulsing brightness, and video-driven LED output. 
+ Extended customization via configuration possible too! Comes with a usable service as well.

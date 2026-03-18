@@ -1,12 +1,12 @@
 # Maintainer: Mario T <admin@muffinmar.io>
 pkgname=quadcast2srgb
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Customizable RGB LED controller for HyperX Quadcast 2S"
 arch=('x86_64')
 url="https://github.com/MuffinMario/quadcast2Srgb"
 license=('MIT')
-depends=('hidapi' 'libsystemd')
+depends=('hidapi' 'libsystemd' 'tomlplusplus')
 makedepends=('cmake' 'gcc' 'pkgconf')
 backup=("etc/quadcast2srgb/config.toml")
 install=quadcast2srgb.install

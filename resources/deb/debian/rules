@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+
+# Mirrors PKGBUILD: cmake Release build with systemd, clang-tidy off
+%:
+	dh $@
+
+override_dh_auto_configure:
+	cmake -B debian/build -S . \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DUSE_SYSTEMD=ON \
+		-DENABLE_CLANG_TIDY=OFF
+
+override_dh_auto_build:
+	cmake --build debian/build
+
+override_dh_auto_install:
+	DESTDIR=$(CURDIR)/debian/quadcast2srgb cmake --install debian/build --prefix /usr
+
+override_dh_auto_clean:
+	rm -rf debian/build

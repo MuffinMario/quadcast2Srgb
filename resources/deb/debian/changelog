@@ -1,0 +1,5 @@
+quadcast2srgb (0.1.0) unstable; urgency=medium
+
+  * Initial Debian packaging.
+
+ -- Mario T <admin@muffinmar.io>  Tue, 18 Mar 2026 00:00:00 +0000

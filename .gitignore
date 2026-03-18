@@ -11,3 +11,5 @@ resources/PKGBUILD/*
 example_videos/*
 !example_videos/badapp.bin
 !example_videos/stars.bin
+
+packages/*
