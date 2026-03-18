@@ -36,7 +36,8 @@ void NotifySystemdStopping()
 #define SYSTEMD_NOTIFY_READY NotifySystemdReady()
 #define SYSTEMD_NOTIFY_WATCHDOG NotifySystemdWatchdog()
 #define SYSTEMD_NOTIFY_STOPPING NotifySystemdStopping()
-#define SYSTEMD_WATCHDOG_DECL_USEC(varname) \
+#define SYSTEMD_WATCHDOG_DECL_USEC(lastWatchdogNotify,varname) \
+    auto lastWatchdogNotify = std::chrono::steady_clock::now(); \
     uint64_t varname = 0;                \
     sd_watchdog_enabled(0, &varname)
 #define SYSTEMD_WATCHDOG_INTERVAL(varname) std::chrono::microseconds(varname / 1000000)
@@ -54,7 +55,7 @@ void NotifySystemdStopping()
 #define SYSTEMD_NOTIFY_READY
 #define SYSTEMD_NOTIFY_WATCHDOG
 #define SYSTEMD_NOTIFY_STOPPING
-#define SYSTEMD_WATCHDOG_DECL_USEC(varname)
+#define SYSTEMD_WATCHDOG_DECL_USEC(lastWatchdogNotify,varname)
 #define SYSTEMD_WATCHDOG_INTERVAL(varname) std::chrono::microseconds(0);
 #define SYSTEMD_NOTIFY_WATCHDOG_IF_DUE(interval, lastNotify)
 #endif
@@ -295,8 +296,7 @@ int main(int p_argc, char *p_pArgv[])
         LOG(L"[Handshake] Connector thread exiting..." );
     };
 
-    auto lastWatchdogNotify = std::chrono::steady_clock::now();
-    SYSTEMD_WATCHDOG_DECL_USEC(watchdogIntervalVar);
+    SYSTEMD_WATCHDOG_DECL_USEC(lastWatchdogNotify,watchdogIntervalVar);
     const auto WATCHDOG_INTERVAL = SYSTEMD_WATCHDOG_INTERVAL(watchdogIntervalVar);
     auto handleIncomingNewDevices = [&](CQuadcast2SCommunicator &p_communicator)
     {
