@@ -15,7 +15,7 @@ TBD, probably going to be releasing a binary in Releases with a suggested way to
 There currently is a PKGBUILD to build the project based on the latest release via `makepkg -si` in `packages/PKGBUILD`. Will add it to AUR soon...
 
 ### Debian
-[Releases](https://github.com/MuffinMario/quadcast2Srgb/releases) include a .deb package that you are able to use to install the program & service.
+[Releases](https://github.com/MuffinMario/quadcast2Srgb/releases) include a .deb package that you are able to use to install the program & service. You can also build it yourself by going into the root directory and running `./resources/deb/docker-build.sh` which will output a deb package in `./packages/deb/quadcast2srgb....deb`
 
 ## Manual build
 You can build the program yourself, simply by going into the root directory and running:
