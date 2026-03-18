@@ -29,10 +29,10 @@ public:
     virtual void Reset() { if (m_pEndCondition) m_pEndCondition->Reset(); }
 
     // Called once per frame; return false to stop displaying
-    virtual bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) = 0;
+    virtual bool DisplayFrame(CQuadcast2SCommunicator &/*p_communicator*/) = 0;
 
     // Called once after displaying ends or is aborted
-    virtual void Shutdown(CQuadcast2SCommunicator &p_communicator) {}
+    virtual void Shutdown(CQuadcast2SCommunicator &/*p_communicator*/) {}
 
     virtual String GetName() const { return m_name; }
     virtual String GetNextDisplay() const { return m_nextDisplay; }

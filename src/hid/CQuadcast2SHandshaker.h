@@ -57,7 +57,8 @@ public:
             return nullptr;
         }
 
-        hid_device_info *pInfo = hid_get_device_info(p_device.get());
+        // nvm [[maybe_unused]] 
+        //hid_device_info *pInfo = hid_get_device_info(p_device.get());
         return p_device;
     }
 };

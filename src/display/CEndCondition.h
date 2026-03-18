@@ -19,8 +19,8 @@ public:
 
 class CTimeEndCondition : public CEndCondition
 {
-    std::chrono::steady_clock::time_point m_endTime;
     std::chrono::milliseconds m_duration;
+    std::chrono::steady_clock::time_point m_endTime;
 
 public:
     explicit CTimeEndCondition(std::chrono::milliseconds p_duration)

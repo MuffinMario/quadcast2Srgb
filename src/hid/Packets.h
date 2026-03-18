@@ -26,7 +26,7 @@ struct SQuadcast2BasePacket
 // 0x44 color change command;
 struct SQuadcast2ColorPacket : public SQuadcast2BasePacket
 {
-    StaticArray<SRGBColor, 20> m_color{0}; // 20 RGB values possible per packet, 0~5 have all 20, but 6 has 24/3 = 8 values addressable
+    StaticArray<SRGBColor, 20> m_color{SRGBColor{0, 0, 0}}; // 20 RGB values possible per packet, 0~5 have all 20, but 6 has 24/3 = 8 values addressable
 };
 
 // 0x10 | 0x1 | 0x00 0x00 ...
@@ -45,7 +45,7 @@ union UQuadcast2CommandPacket
     SQuadcast2ColorPacket m_colorPacket;
     SQuadcast2HandshakePacket m_handshakePacket;
     SQuadcast2ResponseHandshakePacket m_responsePacket;
-    StaticByteArray<64> m_rawData{0}; // init the packet with 0's first
+    StaticByteArray<64> m_rawData{}; // init the packet with 0's first
 };
 
 static_assert(sizeof(SQuadcast2ColorPacket) == 4 + (20 * sizeof(SRGBColor)));

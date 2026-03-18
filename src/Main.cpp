@@ -147,10 +147,6 @@ int main(int p_argc, char *p_pArgv[])
     CQuadcast2SCommunicator communicator;
     HIDDeviceContainer connectedHandshakeDevicesPass;
     Mutex handshakeSenderMtx;
-    bool senderBatchDone = true; // true when sender is idle/done with current batch
-
-    ConditionVariable cvSenderDone;
-    Mutex senderDoneMtx;
 
     auto finderThread = [&]()
     {

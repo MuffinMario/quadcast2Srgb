@@ -76,7 +76,7 @@ public:
         return true;
     }
 
-    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    bool DisplayFrame(CQuadcast2SCommunicator &/*p_communicator*/) override
     {
         // not used!
         return false;
