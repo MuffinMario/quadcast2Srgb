@@ -6,7 +6,7 @@ post_install() {
     echo "      systemctl --user daemon-reload"
     echo "      systemctl --user enable --now quadcast2srgb.service"
     echo ""
-    echo "    The service will NOT start automatically (preset: disabled). 
+    echo "    The service will NOT start automatically (preset: disabled)."
     echo "    Make sure to read up on my install guide on https://github.com/MuffinMario/quadcast2Srgb"
     echo ""
     echo "    The udev rule was installed to /usr/lib/udev/rules.d/."
@@ -19,13 +19,13 @@ post_upgrade() {
     echo ""
     echo "==> quadcast2srgb upgraded."
     echo ""
-    echo "    Make sure to reload your sytem daemon:"
+    echo "    Make sure to reload your system daemon:"
     echo "      systemctl --user daemon-reload"
     echo "      systemctl --user restart quadcast2srgb.service"
     echo ""
 }
 
 pre_remove() {
-    # Stop and disable before files are removed
-    systemctl disable --now myservice 2>/dev/null || true
+    # Stop and disable before files are removed — ignore errors if service was never enabled
+    systemctl --user disable --now quadcast2srgb.service 2>/dev/null || true
 }

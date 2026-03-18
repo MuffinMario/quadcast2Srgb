@@ -1,13 +1,13 @@
 build
 build-profiling
-badapp/bad_apple.mp4
-badapp/badapple_12x9.mp4
-badapp/badapple_12x9.rgbffmpeg
-badapp/output_grey.bin
-badapp/output_rgb.bin
 perf.data*
 
 # ignore PKGBUILD files except for the actual PKGBUILD file
 resources/PKGBUILD/*
 !resources/PKGBUILD/PKGBUILD
 !resources/PKGBUILD/quadcast2srgb.install
+
+# ignore debug internal example videos
+example_videos/*
+!example_videos/badapp.bin
+!example_videos/stars.bin
