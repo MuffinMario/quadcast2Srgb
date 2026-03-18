@@ -7,7 +7,7 @@ After=local-fs.target systemd-udevd.service
 [Service]
 Type=notify
 # default is to just process the config file that is being shipped
-ExecStart=/usr/bin/qc2srgb --config /etc/quadcast2srgb/config.toml
+ExecStart=/usr/bin/qc2srgb --config /usr/etc/quadcast2srgb/config.toml
 Restart=on-failure
 RestartSec=5s
 # watchdog - systemd kills+restarts if no WATCHDOG=1 within 10s

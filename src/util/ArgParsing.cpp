@@ -5,7 +5,7 @@
 
 #include "ArgParsing.h"
 #include <iostream>
-#include "Globals.h"
+#include "../Globals.h"
 
 Option<SRGBColor> ParseHexColor(String p_colorStr)
 {

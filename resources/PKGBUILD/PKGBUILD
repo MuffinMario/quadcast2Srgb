@@ -8,7 +8,8 @@ url="https://github.com/MuffinMario/quadcast2Srgb"
 license=('MIT')
 depends=('hidapi' 'libsystemd')
 makedepends=('cmake' 'gcc' 'pkgconf')
-backup=("etc/quadcast2srgb/example_config.toml")
+backup=("etc/quadcast2srgb/config.toml")
+install=quadcast2srgb.install
 source=("$pkgname-$pkgver.tar.gz::https://github.com/MuffinMario/quadcast2Srgb/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('5f55b2a7d37bb662cf0e0374cb714c6d62fbd618e4cc3b51e62129ff92e970d3')  
 
@@ -24,21 +25,5 @@ build() {
 }
 
 package() {
-    # binary -> to /usr/bin
-    install -Dm755 "build/qc2srgb" "$pkgdir/usr/bin/qc2srgb"
-
-    # required service file
-    install -Dm644 "quadcast2Srgb-$pkgver/resources/systemd/quadcast2srgb.service" \
-    "$pkgdir/usr/lib/systemd/user/quadcast2srgb.service"
-
-    # udev rule!! (hidraw access without sudo)
-    install -Dm644 "quadcast2Srgb-$pkgver/resources/udev/99-quadcast2srgb.rules" \
-    "$pkgdir/usr/lib/udev/rules.d/99-quadcast2srgb.rules"
-
-    # Example configs
-    install -Dm644 "quadcast2Srgb-$pkgver/resources/config/example_config.toml" \
-    "$pkgdir/etc/quadcast2srgb/config.toml"
-
-    install -Dm644 "quadcast2Srgb-$pkgver/resources/config/example_config_alternate_full.toml" \
-    "$pkgdir/etc/quadcast2srgb/example_config_alternate_full.toml"
+    cmake --install build --prefix "$pkgdir/usr"
 }

@@ -1,0 +1,41 @@
+# Generated uninstall helper for this project. It removes files listed in
+# the CMake install_manifest.txt created by `cmake --install` / `make install`.
+# Usage: from the build dir run: cmake -P cmake_uninstall.cmake
+
+if(NOT EXISTS "@CMAKE_BINARY_DIR@/install_manifest.txt")
+  message(FATAL_ERROR "Cannot find install manifest: @CMAKE_BINARY_DIR@/install_manifest.txt")
+endif()
+message(STATUS "Attempting to stop any running service instances (user or system)")
+
+# Try stopping a user unit first; if that fails, try stopping a system unit.
+execute_process(COMMAND systemctl --user stop quadcast2srgb.service
+  RESULT_VARIABLE _stop_user_rc
+  OUTPUT_QUIET ERROR_QUIET)
+if(NOT _stop_user_rc EQUAL 0)
+  message(STATUS "No user service stopped (code ${_stop_user_rc}), attempting system service stop")
+  execute_process(COMMAND systemctl stop quadcast2srgb.service
+    RESULT_VARIABLE _stop_sys_rc
+    OUTPUT_QUIET ERROR_QUIET)
+  if(_stop_sys_rc EQUAL 0)
+    message(STATUS "System service stopped")
+  else()
+    message(STATUS "No running quadcast2srgb service found or stop failed (code ${_stop_sys_rc})")
+  endif()
+else()
+  message(STATUS "User service stopped")
+endif()
+
+file(STRINGS "@CMAKE_BINARY_DIR@/install_manifest.txt" files)
+foreach(f ${files})
+  message(STATUS "Uninstalling: ${f}")
+  execute_process(COMMAND ${CMAKE_COMMAND} -E remove -f "${f}")
+endforeach()
+
+message(STATUS "Uninstall complete (files listed in install_manifest.txt were removed).")
+message(STATUS "")
+message(STATUS "NOTE: systemd and udev state is not reloaded automatically.")
+message(STATUS "      If you had the service enabled/running, run the following yourself:")
+message(STATUS "        systemctl --user daemon-reload")
+message(STATUS "        systemctl --user reset-failed")
+message(STATUS "      And to reload udev rules:")
+message(STATUS "        sudo udevadm control --reload")

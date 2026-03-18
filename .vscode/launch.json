@@ -142,7 +142,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/qc2srgb",
             "args": [
-                "--config","${workspaceFolder}/resources/config/example_config.toml"
+                "--config","${workspaceFolder}/resources/config/config.toml"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
@@ -172,7 +172,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/qc2srgb",
             "args": [
-                "--config","${workspaceFolder}/resources/config/example_config.toml"
+                "--config","${workspaceFolder}/resources/config/config.toml"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

@@ -62,7 +62,43 @@ endif()
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/resources/config/example_config.toml"
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/example_config.toml"
-    COMMENT "Copying example_config.toml to output directory"
+        "${CMAKE_SOURCE_DIR}/resources/config/config.toml"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config.toml"
+    COMMENT "Copying config.toml to output directory"
+)
+
+
+# install task:
+
+# binary
+install(TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION bin
+)
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+    "${CMAKE_BINARY_DIR}/cmake_uninstall.cmake"
+    @ONLY
+)
+
+add_custom_target(uninstall
+    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake
+    COMMENT "Uninstall files listed in install_manifest.txt"
+)
+
+# configs
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/config/"
+    DESTINATION "etc/quadcast2srgb"
+)
+
+# optional systemd svc
+if(USE_SYSTEMD)
+    install(FILES "${CMAKE_SOURCE_DIR}/resources/systemd/quadcast2srgb.service"
+        DESTINATION "lib/systemd/user"
+    )
+endif()
+
+# udev rule for device access without sudo
+install(FILES "${CMAKE_SOURCE_DIR}/resources/udev/99-quadcast2srgb.rules"
+    DESTINATION "lib/udev/rules.d"
 )

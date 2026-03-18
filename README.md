@@ -7,7 +7,7 @@ Currently still in early development, however it has matured enough to be able t
 
 ## Windows
 
-TBD, probably going to be releasing a binary in Releases with a suggested path to build it yourself here...
+TBD, probably going to be releasing a binary in Releases with a suggested way to build it yourself here...
 
 ## Linux
 
@@ -17,11 +17,11 @@ There currently is a PKGBUILD to build the project based on the latest release v
 ### Debian
 TBD
 
-### Manual build
+## Manual build
 You can build the program yourself, simply by going into the root directory and running:
 
-```
-# install required packages
+```sh
+# install required packages (Windows users can use e.g. vcpkg to install hidapi)
 ./packages.sh
 
 # cmake build the project
@@ -35,33 +35,37 @@ cmake --build build
 ```
 This will build the project without any systemd notification/watchdog features, you can turn them on again of course again by instead writing `-DUSE_SYSTEMD=ON`
 
+### Installing (Linux)
+
+```sh
+sudo cmake --install build --prefix /usr
+sudo systemctl --user daemon-reload
+
+# and start via
+systemctl --user enable --now quadcast2srgb
+```
+
+### Uninstalling (Linux)
+This is for MANUAL uninstalling only! It practically only stops the service and removes any related files mentioned in the install manifest.
+```
+sudo cmake -P build/cmake_uninstall.cmake
+```
 # Usage
 
-## Service based (systemctl)
-The package installation comes with a user based service available to launch.
-You may need to first reload the daemon for it to be detected:
-`systemctl --user daemon-reload`
+There are two options to use this tool:
+1. Direct command prompt
+2. Service daemon 
 
-To check the status of the service
-`systemctl --user status quadcast2srgb`
-**It is recommended to test the functionality by directly calling the program first.**
- For this, run `qc2srgb` (no arguments) which will try to find all QC2S devices and display a test color (deep indigo) on them. If you see no errors, and instead a message such as `[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: <serial>`, the service should work just as well.
-
- After this seems to work, you can go ahead and start/stop/enable the service to your liking.
- `systemctl --user start quadcast2srgb`
- `systemctl --user enable quadcast2srgb`
- `systemctl --user stop quadcast2srgb`
-
- The service will invoke a command similar to `qc2srgb --config /etc/quadcast2srgb/config.toml`
-
-## Direct use via tool
+## Command usage
 For the full argument reference run:
 ```sh
 qc2srgb --help
 ```
 
-### Via config file
-Config files are the recommended way to use this tool. The linux package installation provides a user level service that can be enabled via systemctl (See further down in this readme) to automatically set up a more complex set up. Configs are the **only** way you can chain multiple displays with your own customized order and timings. More about configs can be found in the next section as well. To use a config:
+### --config
+Config files are the recommended way to use this tool. The linux package installation provides a user level service that can be enabled via systemctl (See further down in this readme) to automatically set up a more complex set up. Configs are the **only** way you can chain multiple displays along in customized order and timings. The service default config resides in `/usr/etc/quadcast2Srgb/config.toml`. More about configs can be found in the next section as well. 
+
+To use a config:
 ```sh
 # Load a TOML config — supports multiple sequential displays, all display types, etc.
 qc2srgb --config ~/.config/quadcast2srgb/config.toml
@@ -70,7 +74,8 @@ qc2srgb --config ~/.config/quadcast2srgb/config.toml
 qc2srgb --config ~/.config/quadcast2srgb/config.toml --verbose
 ```
 
-### Solid color
+### --display solid
+Display a solid color
 ```sh
 # Deep indigo (default color)
 qc2srgb --display solid --color 290066
@@ -79,7 +84,7 @@ qc2srgb --display solid --color 290066
 qc2srgb --display solid --color '#ff0000ff'
 ```
 
-### Pulsing brightness
+### --display pulse
 Pulse displays can display colors in pulsating brightness. Optionally with customizable speed, and a customizable bezier curve. (See e.g. https://cubic-bezier.com ):
 ```sh
 # Slow indigo pulse 
@@ -92,7 +97,7 @@ qc2srgb --display pulse --color 290066 --pulse-speed 0.015
 qc2srgb --display pulse --color ff1020 --pulse-speed 0.04 --pulse-cubic-bezier 0.4 0.0 0.6 1.0
 ```
 
-### Video-driven LEDs
+### --display video
 Since the QC2S technically has a 12x9 display, it can also be used to display videos. Now, most videos in fact are not made for this tiny resolution, but if you manage to find something that you may want to display, you are able to using the video display:
 ```sh
 # Play a raw RGB video at 24 fps
@@ -109,7 +114,7 @@ ffmpeg -i bad_apple.mp4 \
         -f rawvideo \
         badapple_12x9.raw```
 
-### Restricting to specific devices
+### --serial `serialid`
 In case you have multiple devices which you want to run this tool separately on (per-default it syncs to all devices) you can specify the serial which you can find either via verbose logging (--verbose) or by looking under the physical stand of your microphone:
 ```sh
 # Only control the device with serial ABCDE123
@@ -118,6 +123,26 @@ qc2srgb --display solid --color 290066 --serial ABCDE123
 # Control two specific devices at once
 qc2srgb --display pulse --serial ABCDE123 --serial XYZ99887
 ```
+
+## Service based usage (systemctl)
+The package installation comes with a user based service available to launch.
+You may need to first reload the daemon for it to be detected:
+`systemctl --user daemon-reload`
+
+To check the status of the service
+`systemctl --user status quadcast2srgb`
+**It is recommended to test the functionality by directly calling the program first.**
+ For this, run `qc2srgb` (no arguments) which will try to find all QC2S devices and display a test color (deep indigo) on them. If you see no errors, and instead a message such as `[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: <serial>`, the service should work just as well.
+
+ After this seems to work, you can go ahead and start/stop/enable the service to your liking. The service will invoke a command similar to `qc2srgb --config /usr/etc/quadcast2srgb/config.toml`. I suggest manually starting to see if it works first:
+ `systemctl --user start quadcast2srgb` (I suggest manually testing it out here, first.)
+ `systemctl --user stop quadcast2srgb`
+ `systemctl --user enable --now quadcast2srgb` 
+
+ Troubleshoot the service via:
+ `journalctl --user -xeu quadcast2srgb.service --no-pager -n 50 2>&1`
+
+
 # Config Syntax
 
 Config files are [TOML](https://toml.io) documents. They are the only way to chain multiple displays in sequence with custom timings.
