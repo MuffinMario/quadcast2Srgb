@@ -28,7 +28,15 @@ endif()
 file(STRINGS "@CMAKE_BINARY_DIR@/install_manifest.txt" files)
 foreach(f ${files})
   message(STATUS "Uninstalling: ${f}")
-  execute_process(COMMAND ${CMAKE_COMMAND} -E remove -f "${f}")
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -E remove -f "${f}"
+    RESULT_VARIABLE _rm_rc
+    ERROR_VARIABLE  _rm_err
+  )
+  if(NOT _rm_rc EQUAL 0)
+    message(WARNING "Failed to remove ${f} (code ${_rm_rc}): ${_rm_err}")
+    message(WARNING "  -> You may need to re-run with elevated permissions (sudo)")
+  endif()
 endforeach()
 
 message(STATUS "Uninstall complete (files listed in install_manifest.txt were removed).")

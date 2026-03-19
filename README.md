@@ -38,7 +38,7 @@ This will build the project without any systemd notification/watchdog features, 
 ### Installing (Linux)
 
 ```sh
-sudo cmake --install build --prefix /usr
+sudo cmake --install build --prefix /usr/local
 sudo systemctl --user daemon-reload
 
 # and start via
@@ -63,7 +63,7 @@ qc2srgb --help
 ```
 
 ### --config
-Config files are the recommended way to use this tool. The linux package installation provides a user level service that can be enabled via systemctl (See further down in this readme) to automatically set up a more complex set up. Configs are the **only** way you can chain multiple displays along in customized order and timings. The service default config resides in `/usr/etc/quadcast2Srgb/config.toml`. More about configs can be found in the next section as well. 
+Config files are the recommended way to use this tool. The linux package installation provides a user level service that can be enabled via systemctl (See further down in this readme) to automatically set up a more complex set up. Configs are the **only** way you can chain multiple displays along in customized order and timings. The service default config resides in `/etc/quadcast2Srgb/config.toml`. More about configs can be found in the next section as well. 
 
 To use a config:
 ```sh
@@ -134,7 +134,7 @@ To check the status of the service
 **It is recommended to test the functionality by directly calling the program first.**
  For this, run `qc2srgb` (no arguments) which will try to find all QC2S devices and display a test color (deep indigo) on them. If you see no errors, and instead a message such as `[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: <serial>`, the service should work just as well.
 
- After this seems to work, you can go ahead and start/stop/enable the service to your liking. The service will invoke a command similar to `qc2srgb --config /usr/etc/quadcast2srgb/config.toml`. I suggest manually starting to see if it works first:
+ After this seems to work, you can go ahead and start/stop/enable the service to your liking. The service will invoke a command similar to `qc2srgb --config /etc/quadcast2srgb/config.toml`. I suggest manually starting to see if it works first:
  `systemctl --user start quadcast2srgb` (I suggest manually testing it out here, first.)
  `systemctl --user stop quadcast2srgb`
  `systemctl --user enable --now quadcast2srgb` 

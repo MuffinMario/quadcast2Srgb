@@ -79,9 +79,28 @@ add_custom_command(
 
 # install task:
 
+# set up CORRECT install dirs to deploy during install
+# at this point why even use this variable, but... changes sysconfdir to /etc if it is /usr, 
+# to avoid installing config files to /usr/etc
+include(GNUInstallDirs)
+#print the install dirs
+message(STATUS "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "CMAKE_INSTALL_BINDIR: ${CMAKE_INSTALL_BINDIR}")
+message(STATUS "CMAKE_INSTALL_LIBDIR: ${CMAKE_INSTALL_LIBDIR}")
+message(STATUS "CMAKE_INSTALL_SYSCONFDIR: ${CMAKE_INSTALL_SYSCONFDIR}")
+message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
+message(STATUS "CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
+
+if(CMAKE_INSTALL_PREFIX MATCHES "/usr$")
+    # keep the path before /usr, important when deploying to a prefix, usual when packaging
+    string(REGEX REPLACE "/usr$" "/etc" _sysconfdir "${CMAKE_INSTALL_PREFIX}")
+    set(CMAKE_INSTALL_SYSCONFDIR "${_sysconfdir}" CACHE PATH "System configuration directory" FORCE)
+endif()
+message(STATUS "CMAKE_INSTALL_SYSCONFDIR (post): ${CMAKE_INSTALL_SYSCONFDIR}")
+
 # binary
 install(TARGETS ${PROJECT_NAME}
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 configure_file(
@@ -95,19 +114,25 @@ add_custom_target(uninstall
     COMMENT "Uninstall files listed in install_manifest.txt"
 )
 
-# configs
+# install default config skeleton into sysconf (packagers should move to /etc)
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/config/"
-    DESTINATION "etc/quadcast2srgb"
+    DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/quadcast2srgb"
 )
 
 # optional systemd svc
 if(USE_SYSTEMD)
-    install(FILES "${CMAKE_SOURCE_DIR}/resources/systemd/quadcast2srgb.service"
-        DESTINATION "lib/systemd/user"
+    # Substitute the real binary and config paths into the unit file at configure time
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/resources/systemd/quadcast2srgb.service.in"
+        "${CMAKE_BINARY_DIR}/quadcast2srgb.service"
+        @ONLY
+    )
+    install(FILES "${CMAKE_BINARY_DIR}/quadcast2srgb.service"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/user"
     )
 endif()
 
 # udev rule for device access without sudo
 install(FILES "${CMAKE_SOURCE_DIR}/resources/udev/99-quadcast2srgb.rules"
-    DESTINATION "lib/udev/rules.d"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/udev/rules.d"
 )
