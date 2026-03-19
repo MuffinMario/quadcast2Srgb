@@ -83,20 +83,12 @@ add_custom_command(
 # at this point why even use this variable, but... changes sysconfdir to /etc if it is /usr, 
 # to avoid installing config files to /usr/etc
 include(GNUInstallDirs)
-#print the install dirs
-message(STATUS "CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}")
-message(STATUS "CMAKE_INSTALL_BINDIR: ${CMAKE_INSTALL_BINDIR}")
-message(STATUS "CMAKE_INSTALL_LIBDIR: ${CMAKE_INSTALL_LIBDIR}")
-message(STATUS "CMAKE_INSTALL_SYSCONFDIR: ${CMAKE_INSTALL_SYSCONFDIR}")
-message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
-message(STATUS "CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
 
 if(CMAKE_INSTALL_PREFIX MATCHES "/usr$")
     # keep the path before /usr, important when deploying to a prefix, usual when packaging
     string(REGEX REPLACE "/usr$" "/etc" _sysconfdir "${CMAKE_INSTALL_PREFIX}")
     set(CMAKE_INSTALL_SYSCONFDIR "${_sysconfdir}" CACHE PATH "System configuration directory" FORCE)
 endif()
-message(STATUS "CMAKE_INSTALL_SYSCONFDIR (post): ${CMAKE_INSTALL_SYSCONFDIR}")
 
 # binary
 install(TARGETS ${PROJECT_NAME}
@@ -128,11 +120,12 @@ if(USE_SYSTEMD)
         @ONLY
     )
     install(FILES "${CMAKE_BINARY_DIR}/quadcast2srgb.service"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/user"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/systemd/user" 
+        # dont use libdir... multiarch systems have different libdirs which are not appropriate for systemd and udev
     )
 endif()
 
 # udev rule for device access without sudo
 install(FILES "${CMAKE_SOURCE_DIR}/resources/udev/99-quadcast2srgb.rules"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/udev/rules.d"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/udev/rules.d"
 )
