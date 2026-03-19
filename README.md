@@ -12,7 +12,13 @@ TBD, probably going to be releasing a binary in Releases with a suggested way to
 ## Linux
 
 ### Arch / AUR
-There currently is a PKGBUILD to build the project based on the latest release via `makepkg -si` in `packages/PKGBUILD`. Will add it to AUR soon...
+There currently is a PKGBUILD to build the project based on the latest release via `makepkg -si` in `packages/PKGBUILD`. 
+```
+git clone https://github.com/MuffinMario/quadcast2Srgb.git
+cd quadcast2Srgb/packages/PKGBUILD
+makepkg -si
+```
+Will add it to AUR soon...
 
 ### Debian
 [Releases](https://github.com/MuffinMario/quadcast2Srgb/releases) include a .deb package that you are able to use to install the program & service. You can also build it yourself by going into the root directory and running `./resources/deb/docker-build.sh` which will output a deb package in `./packages/deb/quadcast2srgb....deb`
@@ -21,6 +27,8 @@ There currently is a PKGBUILD to build the project based on the latest release v
 You can build the program yourself, simply by going into the root directory and running:
 
 ```sh
+git clone https://github.com/MuffinMario/quadcast2Srgb.git
+cd quadcast2Srgb
 # install required packages (Windows users can use e.g. vcpkg to install hidapi)
 ./packages.sh
 
@@ -33,7 +41,7 @@ cmake -B build -S . \
 
 cmake --build build
 ```
-This will build the project without any systemd notification/watchdog features, you can turn them on again of course again by instead writing `-DUSE_SYSTEMD=ON`
+This will build the project without any systemd notification/watchdog features, you can turn them on again of course again by instead writing `-DUSE_SYSTEMD=ON`.
 
 ### Installing (Linux)
 
@@ -274,6 +282,75 @@ color         = "#861e27"
 end-condition = { type = "time", duration-ms = 5000 }
 next-display  = "Indigo"
 ```
+
+# Contributing
+Contributions are very welcome! If you have any suggestions, ideas, or want to help out with the project, feel free to open an issue or a pull request.
+
+## Customize Displays
+The architecture of the program is meant to be extendable; meaning that you can add your own display types relatively easy.
+
+Here is an example walkthrough of how to add a new display type that snakes a single lit LED across all 108 LEDs (12×9 grid):
+
+```cpp
+// src/display/CSnakeDisplay.h
+#pragma once
+
+#include "CQC2SDisplay.h"
+#include "DisplayUtils.h" // includes VideoConstants.h for global constants
+#include <array>
+#include <thread>
+
+class CSnakeDisplay : public CQC2SDisplay
+{
+    SRGBColor m_color;
+    uint32_t  m_position = 0; // current lit LED index (0–107)
+
+public:
+    CSnakeDisplay(SRGBColor p_color, String p_name,
+                  UniquePtr<CEndCondition> p_pEndCondition,
+                  String p_nextDisplay = "")
+        : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition),
+                       std::move(p_nextDisplay))
+        , m_color(p_color)
+    {}
+
+// Initialize required variables here. This is called once right when the display gets parsed from arg or config
+    // bool Initialize() override {}
+
+    
+    // Called once before displaying starts; return false to abort
+    virtual void Reset() { 
+        m_position = 0;
+        return CQC2SDisplay::Reset();
+    }
+
+    // Called once after displaying ends or is aborted
+    //virtual void Shutdown(CQuadcast2SCommunicator &/*p_communicator*/) {}
+
+    virtual String GetName() const { return m_name; }
+    virtual String GetNextDisplay() const { return m_nextDisplay; }
+    virtual void SetNextDisplay(String p_nextDisplay) { m_nextDisplay = std::move(p_nextDisplay); }
+
+    // The "render" function: Called once per frame; return false to manually stop playing this display
+    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    {
+        // frame data, defaults to 0
+        StaticArray<SRGBColor, g_LED_COUNT> frame{};
+        frame[m_position] = m_color;
+
+        SendColorFrame(p_communicator, frame.data());
+
+        m_position = (m_position + 1) % g_LED_COUNT;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        return true;
+    }
+};
+```
+After implementing the display, orient yourself around CQC2SDisplayFactory, ArgParsing.cpp and ConfigParser.cpp to add support for parsing this display from command line or config files with your desired config options.
+
+This example will also show you that the indices on LEDs are "snaking", traversing from columns to column in zig-zag manner (e.g. 0–8 goes down the first column, then 9–17 goes up the second column, etc.). See VideoProcessing.cpp for a utility function to convert between (x,y) coordinates and LED indices if you want to do display something axis oriented.
+
 
 # What else to implement?
 - GLSL shader?
