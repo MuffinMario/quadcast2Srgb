@@ -11,7 +11,7 @@ makedepends=('cmake' 'gcc' 'pkgconf' 'tomlplusplus' 'git')
 backup=("etc/quadcast2srgb/config.toml")
 install=quadcast2srgb.install
 source=("$pkgname-$pkgver.tar.gz::https://github.com/MuffinMario/quadcast2Srgb/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('59d5bade332f0d627006987e04fab74b97bed6f093ac403aa9ee843b3cb393d4')  
+sha256sums=('06720f9605da86d25f9ba525442a64767db8ca57b9ef3fb7cd86790958e5cc93')  
 
 build() {
     # build the project, striaght forward
