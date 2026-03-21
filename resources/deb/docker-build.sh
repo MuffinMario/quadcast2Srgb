@@ -49,4 +49,4 @@ docker cp "$CONTAINER_NAME:/output/." "$OUTPUT_DIR/"
 echo ""
 echo "==> Done. Package(s) in $OUTPUT_DIR/:"
 ls -lh "$OUTPUT_DIR/"*.deb 2>/dev/null \
-    || echo "  (no .deb found — check docker build output above)"
+    || echo "  (no .deb found - check docker build output above)"

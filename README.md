@@ -75,7 +75,7 @@ Config files are the recommended way to use this tool. The linux package install
 
 To use a config:
 ```sh
-# Load a TOML config — supports multiple sequential displays, all display types, etc.
+# Load a TOML config - supports multiple sequential displays, all display types, etc.
 qc2srgb --config ~/.config/quadcast2srgb/config.toml
 
 # Same, but log extra diagnostic output
@@ -181,8 +181,8 @@ Each display is a TOML array-of-tables entry. You can define as many as you like
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `type` | string | **yes** | — | Display type: `"solid"`, `"pulse"`, `"pulse-color"`, `"video"` |
-| `name` | string | **yes** | — | Unique identifier used by `startup-display` and `next-display` |
+| `type` | string | **yes** | - | Display type: `"solid"`, `"pulse"`, `"pulse-color"`, `"video"` |
+| `name` | string | **yes** | - | Unique identifier used by `startup-display` and `next-display` |
 | `next-display` | string | no | `""` (stop) | `name` of the display to transition to when this one ends |
 | `end-condition` | inline table | no | none (loop forever) | When to stop this display and move to `next-display` |
 
@@ -202,7 +202,7 @@ If `end-condition` is omitted, the display loops indefinitely. If `next-display`
 
 ---
 
-### `type = "solid"` — solid color
+### `type = "solid"` - solid color
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -219,13 +219,13 @@ next-display  = "NextDisplay"
 
 ---
 
-### `type = "pulse"` — pulsing brightness on a single hue
+### `type = "pulse"` - pulsing brightness on a single hue
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `color` | string | no | `"#290066"` | Hue to pulse |
 | `pulse-speed` | float | no | `0.025` | Phase advance per frame (20 frames/s). Larger → faster |
-| `bezier` | array of 4 floats | no | `[0.11, 0.0, 0.35, 1.0]` | CSS cubic-bézier control points `[p1x, p1y, p2x, p2y]` — see https://cubic-bezier.com |
+| `bezier` | array of 4 floats | no | `[0.11, 0.0, 0.35, 1.0]` | CSS cubic-bézier control points `[p1x, p1y, p2x, p2y]` - see https://cubic-bezier.com |
 
 ```toml
 [[display]]
@@ -238,11 +238,11 @@ bezier      = [0.11, 0.0, 0.35, 1.0]
 
 ---
 
-### `type = "video"` — raw video file
+### `type = "video"` - raw video file
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `video-path` | string | **yes** | — | Absolute or relative path to a raw video file |
+| `video-path` | string | **yes** | - | Absolute or relative path to a raw video file |
 | `video-framerate` | integer | no | `30` | Playback frame rate in FPS |
 | `video-colors` | string | no | `"rgb"` | Pixel format: `"rgb"` (3 bytes/pixel) or `"greyscale"` (1 byte/pixel) |
 
@@ -261,7 +261,7 @@ next-display    = "NextDisplay"
 
 ---
 
-## Example — two solid colors, 5 seconds each
+## Example - two solid colors, 5 seconds each
 
 Alternates between indigo and crimson forever.
 

@@ -27,6 +27,6 @@ post_upgrade() {
 
 pre_remove() {
     echo "==> Disabling service if it exists and is enabled"
-    # Stop and disable before files are removed — ignore errors if service was never enabled
+    # Stop and disable before files are removed - ignore errors if service was never enabled
     systemctl --user disable --now quadcast2srgb.service 2>/dev/null || true
 }

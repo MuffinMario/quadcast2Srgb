@@ -1,4 +1,4 @@
-# Build stage — produces the .deb inside the container.
+# Build stage - produces the .deb inside the container.
 # The docker-build.sh script copies the result out to ./packages/deb/.
 FROM debian:bookworm-slim AS builder
 
@@ -25,7 +25,7 @@ COPY . .
 # Place the debian/ packaging directory at the repo root (where dpkg-buildpackage expects it)
 RUN cp -r resources/deb/debian debian
 
-# Build the package — -b: binary only, -us/-uc: no signing required
+# Build the package - -b: binary only, -us/-uc: no signing required
 RUN dpkg-buildpackage -b -us -uc
 
 # Collect the .deb from the parent directory dpkg-buildpackage writes to
