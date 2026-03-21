@@ -14,10 +14,12 @@ TBD, probably going to be releasing a binary in Releases with a suggested way to
 ### Arch / AUR
 
 The package can be downloaded using `yay`:
-`yay -Sy quadcast2srgb`
+```sh
+yay -Sy quadcast2srgb
+```
 
 Alternatively, the PKGBUILD to build the project based on the latest release via `makepkg -si` is also present in `packages/PKGBUILD`. 
-```
+```sh
 git clone https://github.com/MuffinMario/quadcast2Srgb.git
 cd quadcast2Srgb/packages/PKGBUILD
 makepkg -si
@@ -27,7 +29,7 @@ makepkg -si
 [Releases](https://github.com/MuffinMario/quadcast2Srgb/releases) include a .deb package that you are able to use to install the program & service. 
 
 Using Docker, you can also build it yourself with the below script, which will output a deb package in `./packages/deb/quadcast2srgb....deb`
-```
+```sh
 git clone https://github.com/MuffinMario/quadcast2Srgb.git
 cd quadcast2Srgb
 chmod +x ./resources/deb/docker-build.sh
