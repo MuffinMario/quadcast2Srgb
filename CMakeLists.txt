@@ -129,3 +129,8 @@ endif()
 install(FILES "${CMAKE_SOURCE_DIR}/resources/udev/99-quadcast2srgb.rules"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/udev/rules.d"
 )
+
+# license
+install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/licenses/quadcast2srgb"
+)
