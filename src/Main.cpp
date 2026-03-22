@@ -384,6 +384,7 @@ int main(int p_argc, char *p_pArgv[])
     }
 
     LOG(L"[Main] Found device. Starting sender thread..." );
+    pDisplay->Reset();
     Thread tSender(senderThread);
 
     // joins here

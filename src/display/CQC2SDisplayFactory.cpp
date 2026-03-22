@@ -28,6 +28,11 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateVideoDisplay(VideoFrameBuffer
     return std::make_unique<CVideoDisplay>(std::move(p_frames), p_fps, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
 }
 
+UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateRainbow(ERainbowMode p_mode, double p_rotSpeed, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay)
+{
+    return std::make_unique<CRainbowDisplay>(p_mode, p_rotSpeed, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
+}
+
 UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_pArgv[])
 {
     // default settings
@@ -38,6 +43,8 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
     String videoPath = "";
     uint32_t videoFramerate = 30;
     EVideoFormat videoFormat = EVideoFormat::Rgb;
+    ERainbowMode rainbowMode = ERainbowMode::Flat;
+    double rainbowSpeed = 1.0;
 
     for (int i = 1; i < p_argc; ++i)
     {
@@ -84,6 +91,24 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
             else
                 LOG_ERROR(L"Unknown --video-colors value '" << WStr(fmt) << L"'");
         }
+        else if (arg == "--rainbow-mode" && i + 1 < p_argc)
+        {
+            String mode = p_pArgv[++i];
+            if (mode == "flat")
+                rainbowMode = ERainbowMode::Flat;
+            else if (mode == "vertical")
+                rainbowMode = ERainbowMode::RollingVertical;
+            else if (mode == "horizontal")
+                rainbowMode = ERainbowMode::RollingHorizontal;
+            else if (mode == "diagonal")
+                rainbowMode = ERainbowMode::RollingDiagonal;
+            else
+                LOG_ERROR(L"Unknown --rainbow-mode value '" << WStr(mode) << L"'. Expected: flat, vertical, horizontal, diagonal.");
+        }
+        else if (arg == "--rainbow-speed" && i + 1 < p_argc)
+        {
+            rainbowSpeed = std::stod(p_pArgv[++i]);
+        }
     }
 
     if (displayType == "solid")
@@ -91,6 +116,9 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
 
     if (displayType == "pulse" || displayType == "pulse-color")
         return CreatePulseColor(color, pulseSpeed, "pulse", nullptr, bezier);
+
+    if (displayType == "rainbow")
+        return CreateRainbow(rainbowMode, rainbowSpeed, "rainbow");
 
     if (displayType == "video")
     {

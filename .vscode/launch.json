@@ -105,6 +105,138 @@
             }
         },
         {
+            "name": "(gdb) Launch Rainbow",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/qc2srgb",
+            "args": [
+                "--verbose",
+                "--display", "rainbow",
+                "--rainbow-mode", "flat",
+                "--rainbow-speed", "1.0"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake Build",
+            "sourceFileMap": {
+                "/mnt/894ab61c-871d-43b4-b97d-092fec1a49a5/home/muma/Working/Projects/Code/quadcast2Srgb": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "(gdb) Launch Rainbow Vertical",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/qc2srgb",
+            "args": [
+                "--verbose",
+                "--display", "rainbow",
+                "--rainbow-mode", "vertical",
+                "--rainbow-speed", "1.0"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake Build",
+            "sourceFileMap": {
+                "/mnt/894ab61c-871d-43b4-b97d-092fec1a49a5/home/muma/Working/Projects/Code/quadcast2Srgb": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "(gdb) Launch Rainbow Horizontal",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/qc2srgb",
+            "args": [
+                "--verbose",
+                "--display", "rainbow",
+                "--rainbow-mode", "horizontal",
+                "--rainbow-speed", "1.0"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake Build",
+            "sourceFileMap": {
+                "/mnt/894ab61c-871d-43b4-b97d-092fec1a49a5/home/muma/Working/Projects/Code/quadcast2Srgb": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "(gdb) Launch Rainbow Diagonal",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/qc2srgb",
+            "args": [
+                "--verbose",
+                "--display", "rainbow",
+                "--rainbow-mode", "diagonal",
+                "--rainbow-speed", "3.0"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake Build",
+            "sourceFileMap": {
+                "/mnt/894ab61c-871d-43b4-b97d-092fec1a49a5/home/muma/Working/Projects/Code/quadcast2Srgb": "${workspaceFolder}"
+            }
+        },
+        {
             "name": "(gdb) Launch Default",
             "type": "cppdbg",
             "request": "launch",
