@@ -47,3 +47,33 @@ jobs:
           generate_release_notes: true
           files: |
             packages/deb/*.deb
+
+  build-pkg:
+    name: Build Arch source tarball + PKGBUILD
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Build Arch source tarball and finalised PKGBUILD
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/quadcast2srgb-${VERSION}.tar.gz"
+          chmod +x resources/PKGBUILD/build.sh
+          resources/PKGBUILD/build.sh --package packages/pkg "$URL"
+
+      - name: List produced files
+        run: ls -lh packages/pkg/
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release ${{ github.ref_name }}"
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            packages/pkg/*.tar.gz
+            packages/pkg/PKGBUILD
