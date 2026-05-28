@@ -18,28 +18,13 @@ The package can be installed using `yay`:
 yay -Sy quadcast2srgb
 ```
 
-Alternatively, the PKGBUILD to build the project based on the latest release via `makepkg -si` is also present in `packages/PKGBUILD`. 
-```sh
-git clone https://github.com/MuffinMario/quadcast2Srgb.git
-cd quadcast2Srgb/packages/PKGBUILD
-makepkg -si
-```
-
 ### Debian
 [Releases](https://github.com/MuffinMario/quadcast2Srgb/releases) include a .deb package that you are able to use to install the program & service. 
-
-Using Docker, you can also build it yourself with the below script, which will output a deb package in `./packages/deb/quadcast2srgb....deb`
-```sh
-git clone https://github.com/MuffinMario/quadcast2Srgb.git
-cd quadcast2Srgb
-chmod +x ./resources/deb/docker-build.sh
-./resources/deb/docker-build.sh
-makepkg -si
-```
 
 ## Manual build
 You can build the program yourself, simply by going into the root directory and running:
 
+### Build binary
 ```sh
 git clone https://github.com/MuffinMario/quadcast2Srgb.git
 cd quadcast2Srgb
@@ -56,9 +41,22 @@ cmake -B build -S . \
 
 cmake --build build
 ```
+
 This will build the project without any systemd notification/watchdog features, you can turn them on again of course again by instead writing `-DUSE_SYSTEMD=ON`.
 
-### Installing (Linux)
+### Build the debian package
+
+Using Docker, you can also build the debian package with the script below, which will output a deb package in `./packages/deb/`
+```sh
+git clone https://github.com/MuffinMario/quadcast2Srgb.git
+cd quadcast2Srgb
+chmod +x ./resources/deb/docker-build.sh
+./resources/deb/docker-build.sh
+```
+and installed accordingly with `sudo dpkg -i ./packages/deb/quadcast2srgb_*.deb`
+
+
+### Manual installation (Linux)
 
 ```sh
 sudo cmake --install build --prefix /usr/local
@@ -68,18 +66,18 @@ sudo systemctl --user daemon-reload
 systemctl --user enable --now quadcast2srgb
 ```
 
-### Uninstalling (Linux)
+### Uninstalling from manual installation (Linux)
 This is for MANUAL uninstalling only! It practically only stops the service and removes any related files mentioned in the install manifest.
 ```
 sudo cmake -P build/cmake_uninstall.cmake
 ```
-# Getting Started
+# Setting up / Preparation
 Before starting/enabling the service, I would first suggest going the following route:
 
-1. Open a terminal and execute `qc2srgb`. This should create a solid color display with any present / incoming new microphone. If this doesn't work ensure that you have set up the udev rule `/usr/lib/udev/rules.d/99-quadcast2srgb.rules` enabled. If this still does not work, try it again using `sudo qc2srgb --verbose`; if this fails, possibly create a new issue [here](https://github.com/MuffinMario/quadcast2Srgb/issues/new) with the verbose log.
-2. Ensure that config loading also works by executing `qc2srgb --config /etc/quadcast2srgb/config.toml` (this is practically what the system service will execute). If you didn't install the program, the config resides in `quadcast2Srgb/resources/config/config.toml`.
-3. Start the service `systemctl --user start quadcast2srgb` and possibly check `systemctl --user status quadcast2srgb`
-4. If everything works, you can enable the service `systemctl --user enable quadcast2srgb`
+1. Confirm the program is installed by opening a terminal and execute `qc2srgb`. This should create a solid color display on any present / incoming new microphone. If this doesn't work ensure that you have set up the udev rule `/usr/lib/udev/rules.d/99-quadcast2srgb.rules`. If this still does not work, try again using `sudo qc2srgb --verbose`; if this fails, possibly create a new issue [here](https://github.com/MuffinMario/quadcast2Srgb/issues/new) with the verbose log.
+2. Ensure that config loading also works by executing `qc2srgb --config /etc/quadcast2srgb/config.toml` (this is what the service will execute). If you manually installed the program, the config resides in `quadcast2Srgb/resources/config/config.toml` instead.
+3. Start the service via `systemctl --user start quadcast2srgb`
+4. If everything works, you can enable the service `systemctl --user enable quadcast2srgb`. If something does not work, check `systemctl --user status quadcast2srgb`.
 
 # Usage
 
