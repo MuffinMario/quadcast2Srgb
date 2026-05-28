@@ -1,3 +1,14 @@
+quadcast2srgb (0.2.0) unstable; urgency=medium
+
+  * New display `transition`: cycling through n>=2 colors. 
+    New CLI args: --transition-colors (comma-separated colors), --transition-speed, --transition-cubic-bezier. 
+    New config args for `transition`: transition-colors, transition-speed, bezier.
+  * New display `rainbow`: static or rolling rainbow across all LEDs.
+    New CLI args: --rainbow-mode (flat|vertical|horizontal|diagonal), --rainbow-speed.
+    New config args for `rainbow`: rainbow-mode, rainbow-speed.
+
+ -- Mario T <admin@muffinmar.io>  Wed, 28 May 2026 00:00:00 +0000
+
 quadcast2srgb (0.1.0) unstable; urgency=medium
 
   * Initial Debian packaging.

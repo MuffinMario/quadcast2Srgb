@@ -13,7 +13,7 @@ TBD, probably going to be releasing a binary in Releases with a suggested way to
 
 ### Arch / AUR
 
-The package can be downloaded using `yay`:
+The package can be installed using `yay`:
 ```sh
 yay -Sy quadcast2srgb
 ```
