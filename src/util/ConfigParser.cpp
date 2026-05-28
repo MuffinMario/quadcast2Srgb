@@ -163,6 +163,44 @@ UniquePtr<CQC2SDisplay> CConfigParser::ParseSingleDisplay(const toml::table &p_d
         return CQC2SDisplayFactory::CreatePulseColor(color, pulseSpeed, name, std::move(endCondition), bezier, nextDisplay);
     }
 
+    if (type == "rainbow")
+    {
+        String modeStr = p_displayTable["rainbow-mode"].value<String>().value_or("flat");
+        ERainbowMode mode = ERainbowMode::Flat;
+        if      (modeStr == "vertical")   mode = ERainbowMode::RollingVertical;
+        else if (modeStr == "horizontal") mode = ERainbowMode::RollingHorizontal;
+        else if (modeStr == "diagonal")   mode = ERainbowMode::RollingDiagonal;
+        else if (modeStr != "flat")
+            throw std::runtime_error("Unknown rainbow-mode: '" + modeStr + "'");
+        const double SPEED = p_displayTable["rainbow-speed"].value<double>().value_or(1.0);
+        auto endCondition = ParseEndCondition(p_displayTable, nullptr);
+        return CQC2SDisplayFactory::CreateRainbow(mode, SPEED, name, std::move(endCondition), nextDisplay);
+    }
+
+    if (type == "transition" || type == "color-transition")
+    {
+        auto pColorsNode = p_displayTable["transition-colors"].as_array();
+        if (!pColorsNode || pColorsNode->size() < 2)
+            throw std::runtime_error("'transition' display requires 'transition-colors' array with at least 2 entries");
+
+        DynamicContainer<SHSV> hsvColors;
+        for (const auto &colorNode : *pColorsNode)
+        {
+            auto colorStr = colorNode.value<String>();
+            if (!colorStr)
+                throw std::runtime_error("Invalid entry in 'transition-colors': expected string");
+            auto parsed = ParseHexColor(*colorStr);
+            if (!parsed)
+                throw std::runtime_error("Invalid color in 'transition-colors': '" + *colorStr + "'");
+            hsvColors.push_back(SHSV::FromRGB(*parsed));
+        }
+
+        float speed = OptionalFloat(p_displayTable, "transition-speed", 0.005f);
+        SCubicBezier bezier = ParseBezierWithDefault(p_displayTable, SCubicBezier::EaseInOut());
+        auto endCondition = ParseEndCondition(p_displayTable, nullptr);
+        return CQC2SDisplayFactory::CreateColorTransition(std::move(hsvColors), speed, name, std::move(endCondition), bezier, nextDisplay);
+    }
+
     if (type == "video")
     {
         String videoPath = RequireString(p_displayTable, "video-path");

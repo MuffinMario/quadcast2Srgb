@@ -54,3 +54,25 @@ color = "#861e27ff"
 end-condition = { type = "time", duration-ms = 2050 } # optional, if not given display will repeat endlessly
 cubic-bezier = [0.25, 0.1, 0.25, 1.0]
 pulse-speed = 0.05
+
+#[[display]]
+#type = "rainbow"
+#name = "Rainbow"
+#end-condition = { type = "time", duration-ms = 5000 }
+#next-display = "Pulse1"
+## optional, defaults to "flat". Options: flat | vertical | horizontal | diagonal
+## rainbow-mode = "flat"
+## optional, defaults to 1.0
+## rainbow-speed = 1.0
+
+#[[display]]
+#type = "transition"
+#name = "Transition"
+#end-condition = { type = "time", duration-ms = 10000 }
+#next-display = "Pulse1"
+## required, array of at least 2 RGB hex colors to cycle through in HSV space
+#transition-colors = ["aa0000", "001400", "000040"]
+## optional, defaults to 0.005. Higher value = faster transition per frame.
+## transition-speed = 0.005
+## optional, CSS-style cubic bezier easing applied per segment. Defaults to ease-in-out.
+## bezier = [0.11, 0.0, 0.35, 1.0]

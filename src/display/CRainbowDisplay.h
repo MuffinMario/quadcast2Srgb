@@ -100,6 +100,8 @@ public:
         }
         for (size_t i = 0; i < g_LED_COUNT; ++i)
             m_currentRGBColor[i] = m_currentColor[i].ToRGB();
+            
+        CQC2SDisplay::Reset(); 
     }
 
     bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override

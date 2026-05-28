@@ -122,6 +122,31 @@ ffmpeg -i bad_apple.mp4 \
         -f rawvideo \
         badapple_12x9.raw```
 
+### --display rainbow
+Displays a rainbow across all LEDs. Supports a static flat mode or several rolling animation modes:
+```sh
+# Static flat rainbow
+qc2srgb --display rainbow
+
+# Rolling rainbow animating vertically
+qc2srgb --display rainbow --rainbow-mode vertical
+
+# Rolling diagonal rainbow at double speed
+qc2srgb --display rainbow --rainbow-mode diagonal --rainbow-speed 2.0
+```
+Available `--rainbow-mode` values: `flat` (default), `vertical`, `horizontal`, `diagonal`.
+
+### --display transition
+Smoothly cycles through 2 or more colors (via HSV space), with a customizable cubic Bézier easing curve applied to each segment. Colors are specified as a comma-separated list of 6-digit hex values:
+```sh
+# Cycle red → green → blue → red ...
+qc2srgb --display transition --transition-colors ff0000,00aa00,0000ff
+
+# With a slower speed and a custom bezier easing curve (see https://cubic-bezier.com)
+qc2srgb --display transition --transition-colors ff0000,00aa00,0000ff --transition-speed 0.003 --transition-cubic-bezier 0.4 0.0 0.6 1.0
+```
+`--transition-speed` controls how quickly the phase advances per frame per color segment (default `0.005`). `--transition-cubic-bezier` takes four floats `p1x p1y p2x p2y` (default ease-in-out: `0.11 0.0 0.35 1.0`).
+
 ### --serial `serialid`
 In case you have multiple devices which you want to run this tool separately on (per-default it syncs to all devices) you can specify the serial which you can find either via verbose logging (--verbose) or by looking under the physical stand of your microphone:
 ```sh
@@ -181,7 +206,7 @@ Each display is a TOML array-of-tables entry. You can define as many as you like
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `type` | string | **yes** | - | Display type: `"solid"`, `"pulse"`, `"pulse-color"`, `"video"` |
+| `type` | string | **yes** | - | Display type: `"solid"`, `"pulse"`, `"pulse-color"`, `"rainbow"`, `"transition"`, `"video"` |
 | `name` | string | **yes** | - | Unique identifier used by `startup-display` and `next-display` |
 | `next-display` | string | no | `""` (stop) | `name` of the display to transition to when this one ends |
 | `end-condition` | inline table | no | none (loop forever) | When to stop this display and move to `next-display` |
@@ -225,7 +250,7 @@ next-display  = "NextDisplay"
 |---|---|---|---|---|
 | `color` | string | no | `"#290066"` | Hue to pulse |
 | `pulse-speed` | float | no | `0.025` | Phase advance per frame (20 frames/s). Larger → faster |
-| `bezier` | array of 4 floats | no | `[0.11, 0.0, 0.35, 1.0]` | CSS cubic-bézier control points `[p1x, p1y, p2x, p2y]` - see https://cubic-bezier.com |
+| `bezier` | array of 4 floats | no | `[0.11, 0.0, 0.35, 1.0]` | CSS cubic-bézier control points `[p1x, p1y, p2x, p2y]` -> https://cubic-bezier.com |
 
 ```toml
 [[display]]
@@ -234,6 +259,48 @@ name        = "SlowPulse"
 color       = "#290066"
 pulse-speed = 0.015
 bezier      = [0.11, 0.0, 0.35, 1.0]
+```
+
+---
+
+### `type = "rainbow"` - animated or static rainbow
+
+| Key | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `rainbow-mode` | string | no | `"flat"` | Animation mode: `"flat"`, `"vertical"`, `"horizontal"`, `"diagonal"` |
+| `rainbow-speed` | float | no | `1.0` | Rotation speed multiplier. Only affects rolling modes; larger → faster |
+
+```toml
+[[display]]
+type         = "rainbow"
+name         = "MyRainbow"
+rainbow-mode = "horizontal"
+rainbow-speed = 1.5
+end-condition = { type = "time", duration-ms = 10000 }
+next-display  = "NextDisplay"
+```
+
+---
+
+### `type = "transition"` - smooth N-color HSV transition
+
+Cycles endlessly through 2 or more colors by interpolating in HSV space. A cubic Bézier easing curve is applied per segment.
+
+| Key | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `transition-colors` | array of strings | **yes** | - | At least 2 RGB hex color strings to cycle through |
+| `transition-speed` | float | no | `0.005` | Phase advance per frame per color segment. Larger → faster |
+| `bezier` | array of 4 floats | no | `[0.11, 0.0, 0.35, 1.0]` | CSS cubic-bézier control points `[p1x, p1y, p2x, p2y]` -> https://cubic-bezier.com |
+
+```toml
+[[display]]
+type               = "transition"
+name               = "ColorCycle"
+transition-colors  = ["ff0000", "00aa00", "0000ff"]
+transition-speed   = 0.005
+bezier             = [0.11, 0.0, 0.35, 1.0]
+end-condition      = { type = "time", duration-ms = 15000 }
+next-display       = "NextDisplay"
 ```
 
 ---
@@ -356,4 +423,3 @@ This example will also show you that the indices on LEDs are "snaking", traversi
 - GLSL shader?
 - Capture input/output devices -> response / interface for further displays
 - Lua(JIT) interface for customization (including all features of the program)
-- color transitions with pulse (e.g. #ff0000 to -> #00ff00)

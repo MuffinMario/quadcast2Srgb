@@ -28,12 +28,14 @@ public:
 
     bool IsMet() const override
     {
-        return std::chrono::steady_clock::now() >= m_endTime;
+        const auto NOW = std::chrono::steady_clock::now();
+        return NOW >= m_endTime;
     }
 
     void Reset() override
     {
-        m_endTime = std::chrono::steady_clock::now() + m_duration;
+        const auto NOW = std::chrono::steady_clock::now();
+        m_endTime = NOW + m_duration;
     }
 };
 

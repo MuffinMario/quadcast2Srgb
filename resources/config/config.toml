@@ -2,10 +2,11 @@
 # - creates a slow "fade in" lighting up animation before transitioning (ideally) seamlessly into a solid color
 
 # required, must reference a display added below
-startup-display = "Pulse1"
+startup-display = "Rainbow"
 # optional, defaults to false
-# verbose = true
+verbose = true
 # optional, defaults to [], this way you can restrict the program to only connect to a specific serial, in case you have multiple ones.
+#                       You can check your serial either through the console output when running this tool or by looking at the bottom of your microphone stand.
 #                       IF YOU HAVE MULTIPLE DEVICES FEEL FREE TO CONTACT ME! (I cannot test this myself) https://github.com/MuffinMario/quadcast2Srgb
 # allowed-serials = ["12345678", "87654321"]
 
@@ -31,3 +32,26 @@ cubic-bezier = [0.58, 0.14, 0.89,0.63] # defaults to custom ease in out
 # pulse speed is basically the step progress from 0 to 1 in 50ms intervals, meaning we have 20 steps per second
 pulse-speed = 0.025 # optional, defaults to 0.025, bigger number => faster progression.
 
+
+[[display]]
+type = "rainbow"
+name = "Rainbow"
+end-condition = { type = "time", duration-ms = 5000 }
+next-display = "Transition"
+# optional, defaults to "flat". Options: flat | vertical | horizontal | diagonal
+rainbow-mode = "horizontal"
+# optional, defaults to 1.0
+rainbow-speed = 4.0
+
+[[display]]
+type = "transition"
+name = "Transition"
+end-condition = { type = "time", duration-ms = 10000 }
+next-display = "Pulse1"
+# required, array of at least 2 RGB hex colors to cycle through in HSV space
+transition-colors = ["aa0000", "001400", "000040"]
+# optional, defaults to 0.005. Higher value = faster transition per frame.
+transition-speed = 0.05
+# optional, CSS-style cubic bezier easing applied per segment. Defaults to ease-in-out.
+#bezier = [0.11, 0.0, 0.35, 1.0]
+bezier = [0,0,1,1]

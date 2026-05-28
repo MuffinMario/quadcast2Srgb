@@ -55,7 +55,8 @@ public:
         const float EASED   = CubicBezierEval(m_bezier, m_localT);
         const SHSV  CURRENT = LerpHSV(m_colors[m_segmentIdx], m_colors[NEXT],
                                       static_cast<double>(EASED));
-        const SRGBColor COLOR   = CURRENT.ToRGB();
+                                      
+        const SRGBColor COLOR      = CURRENT.ToRGB();
         SendMonoColorFrame(p_communicator, COLOR);
 
         m_localT += m_speed;
