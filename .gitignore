@@ -5,6 +5,7 @@ perf.data*
 # ignore PKGBUILD files except for the actual PKGBUILD file
 resources/PKGBUILD/*
 !resources/PKGBUILD/PKGBUILD
+!resources/PKGBUILD/build.sh
 !resources/PKGBUILD/quadcast2srgb.install
 
 # ignore debug internal example videos
