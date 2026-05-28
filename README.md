@@ -12,16 +12,30 @@ TBD, probably going to be releasing a binary in Releases with a suggested way to
 ## Linux
 
 ### Arch / AUR
-There currently is a PKGBUILD to build the project based on the latest release via `makepkg -si` in `packages/PKGBUILD`. 
+
+The package can be downloaded using `yay`:
+```sh
+yay -Sy quadcast2srgb
 ```
+
+Alternatively, the PKGBUILD to build the project based on the latest release via `makepkg -si` is also present in `packages/PKGBUILD`. 
+```sh
 git clone https://github.com/MuffinMario/quadcast2Srgb.git
 cd quadcast2Srgb/packages/PKGBUILD
 makepkg -si
 ```
-Will add it to AUR soon...
 
 ### Debian
-[Releases](https://github.com/MuffinMario/quadcast2Srgb/releases) include a .deb package that you are able to use to install the program & service. You can also build it yourself by going into the root directory and running `./resources/deb/docker-build.sh` which will output a deb package in `./packages/deb/quadcast2srgb....deb`
+[Releases](https://github.com/MuffinMario/quadcast2Srgb/releases) include a .deb package that you are able to use to install the program & service. 
+
+Using Docker, you can also build it yourself with the below script, which will output a deb package in `./packages/deb/quadcast2srgb....deb`
+```sh
+git clone https://github.com/MuffinMario/quadcast2Srgb.git
+cd quadcast2Srgb
+chmod +x ./resources/deb/docker-build.sh
+./resources/deb/docker-build.sh
+makepkg -si
+```
 
 ## Manual build
 You can build the program yourself, simply by going into the root directory and running:
@@ -30,6 +44,7 @@ You can build the program yourself, simply by going into the root directory and 
 git clone https://github.com/MuffinMario/quadcast2Srgb.git
 cd quadcast2Srgb
 # install required packages (Windows users can use e.g. vcpkg to install hidapi)
+chmod +x packages.sh
 ./packages.sh
 
 # cmake build the project
@@ -58,13 +73,21 @@ This is for MANUAL uninstalling only! It practically only stops the service and 
 ```
 sudo cmake -P build/cmake_uninstall.cmake
 ```
+# Getting Started
+Before starting/enabling the service, I would first suggest going the following route:
+
+1. Open a terminal and execute `qc2srgb`. This should create a solid color display with any present / incoming new microphone. If this doesn't work ensure that you have set up the udev rule `/usr/lib/udev/rules.d/99-quadcast2srgb.rules` enabled. If this still does not work, try it again using `sudo qc2srgb --verbose`; if this fails, possibly create a new issue [here](https://github.com/MuffinMario/quadcast2Srgb/issues/new) with the verbose log.
+2. Ensure that config loading also works by executing `qc2srgb --config /etc/quadcast2srgb/config.toml` (this is practically what the system service will execute). If you didn't install the program, the config resides in `quadcast2Srgb/resources/config/config.toml`.
+3. Start the service `systemctl --user start quadcast2srgb` and possibly check `systemctl --user status quadcast2srgb`
+4. If everything works, you can enable the service `systemctl --user enable quadcast2srgb`
+
 # Usage
 
 There are two options to use this tool:
-1. Direct command prompt
+1. Direct command usage
 2. Service daemon 
 
-## Command usage
+## Command
 For the full argument reference run:
 ```sh
 qc2srgb --help
