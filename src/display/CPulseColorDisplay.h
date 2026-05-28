@@ -6,62 +6,10 @@
 #pragma once
 
 #include "CQC2SDisplay.h"
+#include "ColorTypes.h"
 #include "DisplayUtils.h"
-#include <cmath>
 #include <chrono>
 #include <thread>
-
-// Cubic Bézier easing - CSS-style: implicit P0=(0,0), P3=(1,1).
-// p_p1 and p_p2 are the two inner control points.
-// Given a linear parameter t in [0,1], solves for the Bézier curve parameter s
-// such that X(s) == t using Newton–Raphson, then returns Y(s) as the eased value.
-struct SCubicBezier
-{
-    float m_p1x;
-    float m_p1y;
-    float m_p2x;
-    float m_p2y;
-
-    static constexpr SCubicBezier EaseInOut() { return {0.11f, 0.0f, 0.35f, 1.0f}; }
-    static constexpr SCubicBezier Linear() { return {0.0f, 0.0f, 1.0f, 1.0f}; }
-};
-
-// Evaluate one component of a cubic Bézier with P0=0, P3=1 at parameter s
-inline float CubicBezierComponent(float p_p1, float p_p2, float p_s)
-{
-    float oneMinusS = 1.0f - p_s;
-    // B(s) = 3*(1-s)^2*s*p1 + 3*(1-s)*s^2*p2 + s^3
-    return 3.0f * oneMinusS * oneMinusS * p_s * p_p1 + 3.0f * oneMinusS * p_s * p_s * p_p2 + p_s * p_s * p_s;
-}
-
-// Derivative of CubicBezierComponent w.r.t. s
-inline float CubicBezierComponentDerivative(float p_p1, float p_p2, float p_s)
-{
-    float oneMinusS = 1.0f - p_s;
-    return 3.0f * oneMinusS * oneMinusS * p_p1 + 6.0f * oneMinusS * p_s * (p_p2 - p_p1) + 3.0f * p_s * p_s * (1.0f - p_p2);
-}
-
-// Map linear t -> eased brightness via cubic Bézier
-inline float CubicBezierEval(const SCubicBezier &p_bezier, float p_t)
-{
-    if (p_t <= 0.0f)
-        return 0.0f;
-    if (p_t >= 1.0f)
-        return 1.0f;
-
-    // Newton–Raphson: find s such that X(s) == t
-    float s = p_t; // initial guess
-    for (int iter = 0; iter < 8; ++iter)
-    {
-        float xS = CubicBezierComponent(p_bezier.m_p1x, p_bezier.m_p2x, s);
-        float dxS = CubicBezierComponentDerivative(p_bezier.m_p1x, p_bezier.m_p2x, s);
-        if (std::abs(dxS) < 1e-6f)
-            break;
-        s -= (xS - p_t) / dxS;
-        s = std::max(0.0f, std::min(1.0f, s));
-    }
-    return CubicBezierComponent(p_bezier.m_p1y, p_bezier.m_p2y, s);
-}
 
 class CPulseColorDisplay : public CQC2SDisplay
 {

@@ -33,6 +33,11 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateRainbow(ERainbowMode p_mode, 
     return std::make_unique<CRainbowDisplay>(p_mode, p_rotSpeed, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
 }
 
+UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateColorTransition(DynamicContainer<SHSV> p_colors, float p_speed, String p_name, UniquePtr<CEndCondition> p_pEndCondition, SCubicBezier p_bezier, String p_nextDisplay)
+{
+    return std::make_unique<CColorTransitionDisplay>(std::move(p_colors), p_speed, std::move(p_name), std::move(p_pEndCondition), p_bezier, std::move(p_nextDisplay));
+}
+
 UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_pArgv[])
 {
     // default settings
@@ -45,6 +50,9 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
     EVideoFormat videoFormat = EVideoFormat::Rgb;
     ERainbowMode rainbowMode = ERainbowMode::Flat;
     double rainbowSpeed = 1.0;
+    DynamicContainer<SRGBColor> transitionColors;
+    float transitionSpeed = 0.005f;
+    SCubicBezier transitionBezier = SCubicBezier::EaseInOut();
 
     for (int i = 1; i < p_argc; ++i)
     {
@@ -109,6 +117,38 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
         {
             rainbowSpeed = std::stod(p_pArgv[++i]);
         }
+        else if (arg == "--transition-colors" && i + 1 < p_argc)
+        {
+            String colorsStr = p_pArgv[++i];
+            // comma-separated hex values, e.g. "ff0000,00ff00,0000ff"
+            transitionColors.clear();
+            size_t pos = 0;
+            while (pos < colorsStr.size())
+            {
+                const size_t COMMA = colorsStr.find(',', pos);
+                const String TOKEN = colorsStr.substr(pos, COMMA == String::npos ? String::npos : COMMA - pos);
+                auto parsed = ParseHexColor(TOKEN);
+                if (parsed.has_value())
+                    transitionColors.push_back(parsed.value());
+                else
+                    LOG_ERROR(L"Invalid --transition-colors token '" << WStr(TOKEN) << L"'. Expected 6-digit hex.");
+                if (COMMA == String::npos) break;
+                pos = COMMA + 1;
+            }
+            if (transitionColors.size() < 2)
+                LOG_ERROR(L"--transition-colors requires at least 2 valid colors.");
+        }
+        else if (arg == "--transition-speed" && i + 1 < p_argc)
+        {
+            transitionSpeed = std::stof(p_pArgv[++i]);
+        }
+        else if (arg == "--transition-cubic-bezier" && i + 4 < p_argc)
+        {
+            transitionBezier.m_p1x = std::stof(p_pArgv[++i]);
+            transitionBezier.m_p1y = std::stof(p_pArgv[++i]);
+            transitionBezier.m_p2x = std::stof(p_pArgv[++i]);
+            transitionBezier.m_p2y = std::stof(p_pArgv[++i]);
+        }
     }
 
     if (displayType == "solid")
@@ -119,6 +159,20 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
 
     if (displayType == "rainbow")
         return CreateRainbow(rainbowMode, rainbowSpeed, "rainbow");
+
+    if (displayType == "transition" || displayType == "color-transition")
+    {
+        if (transitionColors.size() < 2)
+        {
+            LOG_ERROR(L"--display transition requires at least 2 colors via --transition-colors. Defaulting to default color.");
+            return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
+        }
+        DynamicContainer<SHSV> hsvColors;
+        hsvColors.reserve(transitionColors.size());
+        for (const auto &c : transitionColors)
+            hsvColors.push_back(SHSV::FromRGB(c));
+        return CreateColorTransition(std::move(hsvColors), transitionSpeed, "transition", nullptr, transitionBezier);
+    }
 
     if (displayType == "video")
     {
