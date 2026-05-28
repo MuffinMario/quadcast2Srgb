@@ -1,3 +1,10 @@
+quadcast2srgb (0.2.1) unstable; urgency=medium
+
+  * Bugfix: rainbow display hue wrap-around now correct for negative rotation speeds.
+  * Default config updated: static solid color replaced with a subtle color transition.
+
+ -- Mario T <admin@muffinmar.io>  Wed, 28 May 2026 00:00:00 +0000
+
 quadcast2srgb (0.2.0) unstable; urgency=medium
 
   * New display `transition`: cycling through n>=2 colors. 

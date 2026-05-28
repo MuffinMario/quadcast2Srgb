@@ -152,8 +152,8 @@ qc2srgb --display rainbow
 # Rolling rainbow animating vertically
 qc2srgb --display rainbow --rainbow-mode vertical
 
-# Rolling diagonal rainbow at double speed
-qc2srgb --display rainbow --rainbow-mode diagonal --rainbow-speed 2.0
+# Rolling diagonal rainbow at double speed in the opposite direction
+qc2srgb --display rainbow --rainbow-mode diagonal --rainbow-speed -2.0
 ```
 Available `--rainbow-mode` values: `flat` (default), `vertical`, `horizontal`, `diagonal`.
 
@@ -289,7 +289,7 @@ bezier      = [0.11, 0.0, 0.35, 1.0]
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `rainbow-mode` | string | no | `"flat"` | Animation mode: `"flat"`, `"vertical"`, `"horizontal"`, `"diagonal"` |
-| `rainbow-speed` | float | no | `1.0` | Rotation speed multiplier. Only affects rolling modes; larger → faster |
+| `rainbow-speed` | float | no | `1.0` | Rotation speed multiplier. Also supports negative values to change the direction of the rainbow. |
 
 ```toml
 [[display]]

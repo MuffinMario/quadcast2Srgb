@@ -12,13 +12,15 @@ verbose = true
 
 [[display]]
 # required
-type = "solid"
+type = "transition"
 name = "Solid"
 #end-condition = { type = "time", duration-ms = 5000 } # optional, if not given display will repeat endlessly
 next-display = "Pulse1" # optional, defaults to empty, meaning this display will be the end of the sequence
-# end-condition = { type = "time", duration-ms = 5000 } # optional, if not given display will repeat endlessly
-# optional, defaults to "#290066" the hash is optional, only here for vscode color picker
-# color = "#290066ff" # since vscode color picker adds alpha, it can be included. however it is just ignored.
+# slight breathing color transition from indigo to blue
+transition-colors = ["290066", "4d004d"]
+transition-speed = 0.01 # optional, defaults to 0.005, bigger number => faster progression
+# bezier = [0.11, 0.0, 0.35, 1.0] # default ease-in-out, see https://cubic-bezier.com
+bezier = [0.91,0,0.83,0.67]
 
 [[display]]
 type = "pulse-color"

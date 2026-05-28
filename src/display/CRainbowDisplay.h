@@ -111,14 +111,14 @@ public:
         {
             const auto COLOR = m_currentColor[0].ToRGB();
             SendMonoColorFrame(p_communicator, COLOR);
-            m_currentColor[0].m_hue = std::fmod(m_currentColor[0].m_hue + m_rotSpeed, 360.0);
+            m_currentColor[0].m_hue = std::fmod(std::fmod(m_currentColor[0].m_hue + m_rotSpeed, 360.0) + 360.0, 360.0);
         }
         else
         {
             SendColorFrame(p_communicator, m_currentRGBColor.data());
             for (size_t i = 0; i < g_LED_COUNT; ++i)
             {
-                m_currentColor[i].m_hue = std::fmod(m_currentColor[i].m_hue + m_rotSpeed, 360.0);
+                m_currentColor[i].m_hue = std::fmod(std::fmod(m_currentColor[i].m_hue + m_rotSpeed, 360.0) + 360.0, 360.0);
                 m_currentRGBColor[i] = m_currentColor[i].ToRGB();
             }
         }

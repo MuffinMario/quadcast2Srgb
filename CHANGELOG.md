@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.1] - 2026-05-28
+
+### Fixed
+- Rainbow display: corrected hue wrap-around for negative rotation speeds.
+- Default config updated: static solid color replaced with a subtle color transition.
+
 ## [0.2.0] - 2026-05-28
 
 ### Added

@@ -113,7 +113,7 @@
                 "--verbose",
                 "--display", "rainbow",
                 "--rainbow-mode", "flat",
-                "--rainbow-speed", "1.0"
+                "--rainbow-speed", "-3.0"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
@@ -212,7 +212,7 @@
                 "--verbose",
                 "--display", "rainbow",
                 "--rainbow-mode", "diagonal",
-                "--rainbow-speed", "3.0"
+                "--rainbow-speed", "-60.0"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
