@@ -158,6 +158,7 @@ int main(int p_argc, char *p_pArgv[])
             HIDDeviceContainer devices;
             Set<WString> connectedSerials = communicator.GetOpenSerials();
 
+            // noisy... will be removed after lack of device desync/detaching issues on multiple other devic/userss
             LOG_VERBOSE(L"[Finder] Current connected serials: ");
             for (const auto &s : connectedSerials)
                 LOG_VERBOSE(s << L" ");
