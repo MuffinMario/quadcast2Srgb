@@ -57,6 +57,7 @@ cp -r "$PROJECT_ROOT/cmake"                   "$STAGE/cmake"
 cp -r "$PROJECT_ROOT/resources/config"        "$STAGE/resources/config"
 cp -r "$PROJECT_ROOT/resources/systemd"       "$STAGE/resources/systemd"
 cp -r "$PROJECT_ROOT/resources/udev"          "$STAGE/resources/udev"
+[[ -d "$PROJECT_ROOT/resources/shader" ]] && cp -r "$PROJECT_ROOT/resources/shader" "$STAGE/resources/shader"
 
 # ── CI / release mode ─────────────────────────────────────────────────────────
 if [[ "$MODE" == "package" ]]; then

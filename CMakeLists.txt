@@ -151,8 +151,8 @@ install(FILES
     DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/quadcast2srgb"
 )
 
-# GLSL shaders
-if(USE_GLSL)
+# GLSL shaders (directory may be absent in older/partial source tarballs — skip gracefully)
+if(USE_GLSL AND EXISTS "${CMAKE_SOURCE_DIR}/resources/shader")
     install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/shader/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/quadcast2srgb/shaders"
     )
