@@ -3,6 +3,18 @@ Program to control the 108 individual LEDS on the HyperX Quadcast 2S RGB. Made i
 
 Currently still in early development, however it has matured enough to be able to be used casually with minimal CPU consumption in mind.
 
+> **Disclaimer:** This software is provided as-is, without any warranty of any kind. Use it at your own risk. The author is not responsible for any damage to your hardware, data loss, or any other issues that may arise from using this software.
+
+## Table of Contents
+- [Installation](#installation)
+- [Setting up / Preparation](#setting-up--preparation)
+- [Usage](#usage)
+  - [Command](#command)
+  - [Service based usage (systemctl)](#service-based-usage-systemctl)
+- [Config Syntax](#config-syntax)
+- [GLSL Shaders](#glsl-shaders)
+- [Contributing](#contributing)
+
 # Installation
 
 ## Windows
@@ -168,6 +180,22 @@ qc2srgb --display transition --transition-colors ff0000,00aa00,0000ff --transiti
 ```
 `--transition-speed` controls how quickly the phase advances per frame per color segment (default `0.005`). `--transition-cubic-bezier` takes four floats `p1x p1y p2x p2y` (default ease-in-out: `0.11 0.0 0.35 1.0`).
 
+### --display glsl
+Renders an OpenGL ES 3.00 fragment shader to the LED grid. See the [GLSL Shaders](#glsl-shaders) section for shader conventions and an example.
+```sh
+# Display a shader at 30 fps
+qc2srgb --display glsl --shader-path ~/my_effect.glsl
+
+# At 15 fps with 4× supersampling (renders at 48×36, averages down to 12×9)
+qc2srgb --display glsl --shader-path ~/my_effect.glsl --shader-fps 15 --shader-scale 4
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--shader-path <path>` | <none> (required) | Path to the `.glsl` fragment shader file |
+| `--shader-fps <n>` | `30` | Target frame rate. **Warning**: Any value which results in a frame delta of ~30ms or lower (> ~33 fps) may cause unwanted behavior as the microphone controller cannot work off the requests in time. WIP: Once we add a response-wait communication option instead of blindly sending packets, a frame rate above ~33 fps might not be possible at all. |
+| `--shader-scale <n>` | `1` | Supersampling scale: renders at `12·n × 9·n` pixels and block-averages down to 12×9; higher values produce smoother color gradients. Anything above 10 is not recommended due to diminishing return for increased computing cost on such a small display screen. Feel free to figure this one out to your needs though; the smaller the better.  |
+
 ### --serial `serialid`
 In case you have multiple devices which you want to run this tool separately on (per-default it syncs to all devices) you can specify the serial which you can find either via verbose logging (--verbose) or by looking under the physical stand of your microphone:
 ```sh
@@ -177,7 +205,6 @@ qc2srgb --display solid --color 290066 --serial ABCDE123
 # Control two specific devices at once
 qc2srgb --display pulse --serial ABCDE123 --serial XYZ99887
 ```
-
 ## Service based usage (systemctl)
 The package installation comes with a user based service available to launch.
 You may need to first reload the daemon for it to be detected:
@@ -227,7 +254,7 @@ Each display is a TOML array-of-tables entry. You can define as many as you like
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `type` | string | **yes** | - | Display type: `"solid"`, `"pulse"`, `"pulse-color"`, `"rainbow"`, `"transition"`, `"video"` |
+| `type` | string | **yes** | - | Display type: `"solid"`, `"pulse"`, `"pulse-color"`, `"rainbow"`, `"transition"`, `"video"`, `"glsl"` |
 | `name` | string | **yes** | - | Unique identifier used by `startup-display` and `next-display` |
 | `next-display` | string | no | `""` (stop) | `name` of the display to transition to when this one ends |
 | `end-condition` | inline table | no | none (loop forever) | When to stop this display and move to `next-display` |
@@ -349,6 +376,29 @@ next-display    = "NextDisplay"
 
 ---
 
+### `type = "glsl"` - GLSL fragment shader
+
+Renders an OpenGL ES 3.00 fragment shader to the LED grid. See the [GLSL Shaders](#glsl-shaders) section for uniform conventions and a shader template.
+
+| Key | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `shader-path` | string | **yes** | - | Absolute or relative path to the `.glsl` fragment shader file |
+| `shader-fps` | integer | no | `30` | Target frame rate. **Warning:** values above ~33 fps (due to it resulting in a frame delta < ~30 ms) may cause unwanted behavior as the microphone controller cannot process requests in time. |
+| `shader-scale` | integer | no | `1` | Supersampling scale — renders at `12·n × 9·n` pixels and block-averages down to 12×9. Values above 10 are not recommended due to diminishing returns for the increased compute cost, unless needed. |
+
+```toml
+[[display]]
+type         = "glsl"
+name         = "MyShader"
+shader-path  = "/usr/share/quadcast2srgb/shaders/example.glsl"
+shader-fps   = 30
+shader-scale = 2
+end-condition = { type = "time", duration-ms = 10000 }
+next-display  = "NextDisplay"
+```
+
+---
+
 ## Example - two solid colors, 5 seconds each
 
 Alternates between indigo and crimson forever.
@@ -369,6 +419,43 @@ name          = "Crimson"
 color         = "#861e27"
 end-condition = { type = "time", duration-ms = 5000 }
 next-display  = "Indigo"
+```
+
+# GLSL Shaders
+
+The `glsl` display type renders any OpenGL ES 3.00 fragment shader to the 12×9 LED grid, following the same uniform naming conventions as [Shadertoy](https://www.shadertoy.com). Additional `u_*` aliases are also accepted for compatibility with other web-based editors.
+
+| Uniform | Aliases | Type | Description |
+|---|---|---|---|
+| `iTime` | `u_time`, `time` | `float` | Seconds since the display started or was last reset |
+| `iResolution` | `u_resolution`, `resolution` | `vec2` | Render target size `vec2(12, 9) * shaderScale` |
+| `iFrame` | `u_frame`, `frame` | `int` | Frame index since the display started or was last reset |
+
+Any uniforms that are absent from the shader are silently skipped. None are required. Just like a traditional shader, the output color is determined by writing to an outgoing `vec4` global. The RGB components of this variable determine the LED colors, while the alpha component is ignored.
+
+## Minimal Example
+
+A minimal shader that maps the UV coordinates to red/green and animates blue over time:
+
+```glsl
+#version 300 es
+precision highp float;
+
+uniform float iTime;
+uniform vec2  iResolution;
+
+out vec4 fragColor;
+
+void main()
+{
+    vec2 uv = gl_FragCoord.xy / iResolution;
+    fragColor = vec4(uv.x, uv.y, 0.5 + 0.5 * sin(iTime), 1.0);
+}
+```
+
+Save it to a file and run:
+```sh
+qc2srgb --display glsl --shader-path ~/example.glsl --shader-fps 30
 ```
 
 # Contributing
@@ -441,6 +528,5 @@ This example will also show you that the indices on LEDs are "snaking", traversi
 
 
 # What else to implement?
-- GLSL shader?
-- Capture input/output devices -> response / interface for further displays
-- Lua(JIT) interface for customization (including all features of the program)
+- Capture input/output devices -> response / interface for further (customizable) displays like the GLSL shader.
+- Lua(JIT) interface for customization? (including all features of the program)

@@ -1,5 +1,6 @@
 # abstract: this file does the following:
-# - defines a display sequence of 3 displays: solid color -> pulse color 1 -> pulse color 2 -> pulse color 1 (looping between the last 2)
+# - active sequence: solid color -> pulse color 1 -> pulse color 2 -> pulse color 1 (looping between the last 2)
+# - commented-out examples for all other display types: video, rainbow, transition, glsl
 
 # required, must reference a display added below
 startup-display = "Solid"
@@ -76,3 +77,17 @@ pulse-speed = 0.05
 ## transition-speed = 0.005
 ## optional, CSS-style cubic bezier easing applied per segment. Defaults to ease-in-out.
 ## bezier = [0.11, 0.0, 0.35, 1.0]
+
+#[[display]]
+#type = "glsl"
+#name = "Shader"
+#end-condition = { type = "time", duration-ms = 10000 }
+#next-display = "Pulse1"
+## required, absolute or relative path to a GLSL ES 3.00 fragment shader file
+#shader-path = "/usr/share/quadcast2srgb/shaders/experimenting.glsl"
+## optional, defaults to 30. Warning: values above ~33 fps may cause unwanted behavior
+## as the microphone controller cannot process requests in time.
+## shader-fps = 30
+## optional, defaults to 1. Renders at 12*scale x 9*scale and block-averages down.
+## Values above 10 are not recommended due to diminishing returns.
+## shader-scale = 2

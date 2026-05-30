@@ -1,0 +1,17 @@
+# Small example demonstrating a shader config
+startup-display = "MyGLSLDisplay"
+# verbose = true
+# allowed-serials = ["12345678", "87654321"]
+
+
+[[display]]
+type         = "glsl"
+name         = "MyGLSLDisplay"
+# path to the GLSL fragment shader file (absolute, or relative to the working directory)
+shader-path  = "/usr/share/quadcast2srgb/shaders/spiral.glsl"
+# optional (default: 30)
+shader-fps   = 30
+# optional: resulting framebuffer resolution 120x90 (10*12 x 10*9)
+shader-scale = 10
+# end-condition = { type = "time", duration-ms = 10000 }
+# next-display  = "SomeOtherDisplay"

@@ -370,8 +370,8 @@
             "args": [
                 "--verbose",
                 "--display", "glsl",
-                "--shader-path", "${workspaceFolder}/resources/shader/experimenting.glsl",
-                "--shader-fps", "60",
+                "--shader-path", "${workspaceFolder}/resources/shader/spiral.glsl",
+                "--shader-fps", "40",
                 "--shader-scale","10"
             ],
             "stopAtEntry": false,

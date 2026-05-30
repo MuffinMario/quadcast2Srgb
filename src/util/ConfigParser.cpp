@@ -221,6 +221,17 @@ UniquePtr<CQC2SDisplay> CConfigParser::ParseSingleDisplay(const toml::table &p_d
         return CQC2SDisplayFactory::CreateVideoDisplay(std::move(frames), fps, name, std::move(endCondition), nextDisplay);
     }
 
+#ifdef USE_GLSL
+    if (type == "glsl")
+    {
+        String shaderPath = RequireString(p_displayTable, "shader-path");
+        uint32_t fps   = static_cast<uint32_t>(OptionalInt64(p_displayTable, "shader-fps",   30));
+        uint32_t scale = static_cast<uint32_t>(OptionalInt64(p_displayTable, "shader-scale",  1));
+        auto endCondition = ParseEndCondition(p_displayTable, nullptr);
+        return CQC2SDisplayFactory::CreateGLSLDisplay(std::move(shaderPath), fps, scale, name, std::move(endCondition), nextDisplay);
+    }
+#endif
+
     throw std::runtime_error("Unknown display type: '" + type + "'");
 }
 
