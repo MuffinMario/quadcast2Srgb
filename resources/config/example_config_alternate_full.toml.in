@@ -84,7 +84,7 @@ pulse-speed = 0.05
 #end-condition = { type = "time", duration-ms = 10000 }
 #next-display = "Pulse1"
 ## required, absolute or relative path to a GLSL ES 3.00 fragment shader file
-#shader-path = "/usr/share/quadcast2srgb/shaders/experimenting.glsl"
+#shader-path = "@QUADCAST2SRGB_SHADER_DIR@/spiral.glsl"
 ## optional, defaults to 30. Warning: values above ~33 fps may cause unwanted behavior
 ## as the microphone controller cannot process requests in time.
 ## shader-fps = 30

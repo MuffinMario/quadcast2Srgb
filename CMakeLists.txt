@@ -108,6 +108,21 @@ if(CMAKE_INSTALL_PREFIX MATCHES "/usr$")
     set(CMAKE_INSTALL_SYSCONFDIR "${_sysconfdir}" CACHE PATH "System configuration directory" FORCE)
 endif()
 
+# Shader install directory (used to substitute paths in config templates)
+set(QUADCAST2SRGB_SHADER_DIR "${CMAKE_INSTALL_FULL_DATADIR}/quadcast2srgb/shaders")
+
+# Generate config files that embed the resolved shader install path
+configure_file(
+    "${CMAKE_SOURCE_DIR}/resources/config/config_shader.toml.in"
+    "${CMAKE_BINARY_DIR}/config/config_shader.toml"
+    @ONLY
+)
+configure_file(
+    "${CMAKE_SOURCE_DIR}/resources/config/example_config_alternate_full.toml.in"
+    "${CMAKE_BINARY_DIR}/config/example_config_alternate_full.toml"
+    @ONLY
+)
+
 # binary
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -125,9 +140,23 @@ add_custom_target(uninstall
 )
 
 # install default config skeleton into sysconf (packagers should move to /etc)
+# .toml.in sources are excluded; the configure_file()-generated versions are installed instead
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/config/"
     DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/quadcast2srgb"
+    REGEX "\\.toml\\.in$" EXCLUDE
 )
+install(FILES
+    "${CMAKE_BINARY_DIR}/config/config_shader.toml"
+    "${CMAKE_BINARY_DIR}/config/example_config_alternate_full.toml"
+    DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/quadcast2srgb"
+)
+
+# GLSL shaders
+if(USE_GLSL)
+    install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/shader/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/quadcast2srgb/shaders"
+    )
+endif()
 
 # optional systemd svc
 if(USE_SYSTEMD)

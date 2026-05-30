@@ -1,3 +1,12 @@
+quadcast2srgb (0.3.0) unstable; urgency=medium
+
+  * New display `glsl`: renders an OpenGL ES 3.00 fragment shader to the LED grid via EGL headless rendering.
+    New CLI args: --shader-path (required), --shader-fps (default 30), --shader-scale (default 1, supersampling).
+    New config keys for `glsl`: shader-path, shader-fps, shader-scale.
+    Accepts Shadertoy-style uniform names (iTime, iResolution, iFrame) and u_* / bare aliases.
+
+ -- Mario T <admin@muffinmar.io>  Fri, 30 May 2026 00:00:00 +0000
+
 quadcast2srgb (0.2.1) unstable; urgency=medium
 
   * Bugfix: rainbow display hue wrap-around now correct for negative rotation speeds.

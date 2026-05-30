@@ -8,7 +8,7 @@ startup-display = "MyGLSLDisplay"
 type         = "glsl"
 name         = "MyGLSLDisplay"
 # path to the GLSL fragment shader file (absolute, or relative to the working directory)
-shader-path  = "/usr/share/quadcast2srgb/shaders/spiral.glsl"
+shader-path  = "@QUADCAST2SRGB_SHADER_DIR@/spiral.glsl"
 # optional (default: 30)
 shader-fps   = 30
 # optional: resulting framebuffer resolution 120x90 (10*12 x 10*9)

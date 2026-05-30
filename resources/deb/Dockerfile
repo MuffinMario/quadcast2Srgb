@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libhidapi-dev \
         libsystemd-dev \
         libtomlplusplus-dev \
+        libegl1-mesa-dev \
+        libgles2-mesa-dev \
         rsync \
         dpkg-dev \
     && rm -rf /var/lib/apt/lists/*

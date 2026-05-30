@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0] - 2026-05-30
+
+### Added
+- New display `glsl`: renders an OpenGL ES 3.00 fragment shader to the LED grid via EGL headless rendering.
+  - CLI: `--shader-path` (required), `--shader-fps` (default 30), `--shader-scale` (default 1, supersampling)
+  - Config: `shader-path`, `shader-fps`, `shader-scale`
+  - Accepts Shadertoy-style uniform names (`iTime`, `iResolution`, `iFrame`) as well as `u_time`/`u_resolution`/`u_frame` and `time`/`resolution`/`frame` aliases.
+
 ## [0.2.1] - 2026-05-28
 
 ### Fixed
