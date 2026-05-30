@@ -34,6 +34,20 @@ class CQuadcast2SCommunicator
         return writeRes;
     }
 
+    // Read from a single device; caller must NOT hold m_mutex.
+    // Returns the hid_read_timeout result; on failure the device is removed.
+    int Read(HIDDevicePtr p_device, uint8_t *p_pData, size_t p_size, uint32_t p_timeoutMS)
+    {
+        int readRes = hid_read_timeout(p_device.get(), p_pData, p_size, p_timeoutMS);
+        if (readRes < 0)
+        {
+            LOG_ERROR(L"Failed to read from device: " << hid_error(p_device.get())
+                      << L" - removing from list.");
+            RemoveDevice(p_device);
+        }
+        return readRes;
+    }
+
 public:
     CQuadcast2SCommunicator() = default;
 

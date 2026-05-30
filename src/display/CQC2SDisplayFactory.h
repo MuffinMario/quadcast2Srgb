@@ -15,6 +15,9 @@
 #include "CColorTransitionDisplay.h"
 #include "CEndCondition.h"
 #include "../video/VideoConstants.h"
+#ifdef USE_GLSL
+#include "CGLSLDisplay.h"
+#endif
 
 class CQC2SDisplayFactory
 {
@@ -25,6 +28,9 @@ public:
     static UniquePtr<CQC2SDisplay> CreateVideoDisplay(VideoFrameBuffer p_frames, uint32_t p_fps = 30, String p_name = "video", UniquePtr<CEndCondition> p_pEndCondition = nullptr, String p_nextDisplay = "");
     static UniquePtr<CQC2SDisplay> CreateRainbow(ERainbowMode p_mode = ERainbowMode::Flat, double p_rotSpeed = 1.0, String p_name = "rainbow", UniquePtr<CEndCondition> p_pEndCondition = nullptr, String p_nextDisplay = "");
     static UniquePtr<CQC2SDisplay> CreateColorTransition(DynamicContainer<SHSV> p_colors, float p_speed = 0.005f, String p_name = "transition", UniquePtr<CEndCondition> p_pEndCondition = nullptr, SCubicBezier p_bezier = SCubicBezier::EaseInOut(), String p_nextDisplay = "");
+#ifdef USE_GLSL
+    static UniquePtr<CQC2SDisplay> CreateGLSLDisplay(String p_shaderPath, uint32_t p_fps = 30, uint32_t p_resolutionScale = 1, String p_name = "glsl", UniquePtr<CEndCondition> p_pEndCondition = nullptr, String p_nextDisplay = "");
+#endif
 
     static UniquePtr<CQC2SDisplay> CreateFromArgs(int p_argc, char *p_pArgv[]);
 };

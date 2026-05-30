@@ -38,6 +38,13 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateColorTransition(DynamicContai
     return std::make_unique<CColorTransitionDisplay>(std::move(p_colors), p_speed, std::move(p_name), std::move(p_pEndCondition), p_bezier, std::move(p_nextDisplay));
 }
 
+#ifdef USE_GLSL
+UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateGLSLDisplay(String p_shaderPath, uint32_t p_fps, uint32_t p_resolutionScale, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay)
+{
+    return std::make_unique<CGLSLDisplay>(std::move(p_shaderPath), p_fps, p_resolutionScale, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
+}
+#endif
+
 UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_pArgv[])
 {
     // default settings
@@ -53,6 +60,11 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
     DynamicContainer<SRGBColor> transitionColors;
     float transitionSpeed = 0.005f;
     SCubicBezier transitionBezier = SCubicBezier::EaseInOut();
+#ifdef USE_GLSL
+    String shaderPath = "";
+    uint32_t shaderFps = 30;
+    uint32_t shaderScale = 1;
+#endif
 
     for (int i = 1; i < p_argc; ++i)
     {
@@ -149,6 +161,20 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
             transitionBezier.m_p2x = std::stof(p_pArgv[++i]);
             transitionBezier.m_p2y = std::stof(p_pArgv[++i]);
         }
+#ifdef USE_GLSL
+        else if (arg == "--shader-path" && i + 1 < p_argc)
+        {
+            shaderPath = p_pArgv[++i];
+        }
+        else if (arg == "--shader-fps" && i + 1 < p_argc)
+        {
+            shaderFps = static_cast<uint32_t>(std::stoul(p_pArgv[++i]));
+        }
+        else if (arg == "--shader-scale" && i + 1 < p_argc)
+        {
+            shaderScale = static_cast<uint32_t>(std::stoul(p_pArgv[++i]));
+        }
+#endif
     }
 
     if (displayType == "solid")
@@ -200,6 +226,19 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateFromArgs(int p_argc, char *p_
         }
     }
 
+#ifdef USE_GLSL
+    if (displayType == "glsl")
+    {
+        if (shaderPath.empty())
+        {
+            LOG_ERROR(L"--display glsl requires --shader-path <path>. Defaulting to default color.");
+            return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
+        }
+        return CreateGLSLDisplay(shaderPath, shaderFps, shaderScale, "glsl");
+    }
+#endif
+
     LOG_ERROR(L"Unknown display type: " << WStr(displayType) << L". Defaulting to default color.");
     return CreateSolidColor({0x29, 0x00, 0x66}, "solid");
 }
+

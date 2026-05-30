@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(qc2srgb
-    VERSION 0.2.1
+    VERSION 0.3.0
     LANGUAGES CXX
 )
 
@@ -28,9 +28,21 @@ endif()
 # systemd integration (opt-in via -DUSE_SYSTEMD=ON)
 option(USE_SYSTEMD "Enable systemd integration" OFF)
 
+# GLSL shader display (opt-in via -DUSE_GLSL=ON)
+# Requires: libEGL and OpenGL ES 3 (e.g. Mesa's libGLESv2)
+option(USE_GLSL "Enable GLSL shader display via EGL + OpenGL ES 3" ON)
+
 if(USE_SYSTEMD)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SYSTEMD libsystemd)
+endif()
+
+if(USE_GLSL)
+    find_package(PkgConfig REQUIRED)
+    # libEGL
+    find_package(OpenGL REQUIRED COMPONENTS EGL)
+    # OpenGL ES 3 (glesv2 provides the ES 2+3 entry points on Mesa)
+    pkg_check_modules(GLESV2 REQUIRED glesv2)
 endif()
 
 # Clang-Tidy integration (opt-out via -DENABLE_CLANG_TIDY=OFF)
@@ -66,6 +78,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 if(USE_SYSTEMD)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${SYSTEMD_LIBRARIES})
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_SYSTEMD)
+endif()
+
+if(USE_GLSL)
+    target_link_libraries(${PROJECT_NAME} PRIVATE OpenGL::EGL ${GLESV2_LIBRARIES})
+    target_include_directories(${PROJECT_NAME} PRIVATE ${GLESV2_INCLUDE_DIRS})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE USE_GLSL)
 endif()
 
 add_custom_command(
