@@ -103,6 +103,7 @@ void PrintHelp(const char *p_pProgramName)
         L"        transition   Smooth HSV transition between N>=2 colors\n"
         L"        color-transition  Alternative name to transition\n"
         L"        video        Driven by a raw video file\n"
+        L"        glsl         OpenGL ES 3.00 fragment shader\n"
         L"\n"
         L"  --color <#rrggbb>\n"
         L"      LED color as an RGB hex value, with or without a leading '#'.\n"
@@ -159,5 +160,25 @@ void PrintHelp(const char *p_pProgramName)
         L"      Four floats defining a CSS-style cubic Bezier easing curve applied\n"
         L"      to each color-to-color segment.\n"
         L"      Default: 0.11 0.0 0.35 1.0  (ease-in-out)\n"
-        L"\n");
+        L"\n"
+#ifdef USE_GLSL
+        L"GLSL shader display options:\n"
+        L"\n"
+        L"  --shader-path <path>\n"
+        L"      Path to an OpenGL ES 3.00 fragment shader file. Required when\n"
+        L"      --display glsl is used.\n"
+        L"\n"
+        L"  --shader-fps <n>\n"
+        L"      Target frame rate in frames per second. Default: 30\n"
+        L"      Warning: values above ~33 fps (frame delta <= 30 ms) may cause\n"
+        L"      unwanted behavior as the microphone controller cannot process\n"
+        L"      requests fast enough.\n"
+        L"\n"
+        L"  --shader-scale <n>\n"
+        L"      Supersampling scale. Renders at 12*n x 9*n pixels and\n"
+        L"      block-averages down to 12x9. Default: 1\n"
+        L"      Values above 10 are not recommended due to diminishing returns.\n"
+        L"\n"
+#endif
+        );
 }
