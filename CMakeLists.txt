@@ -70,6 +70,9 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<CONFIG:Debug>:-fno-omit-frame-pointer>
     $<$<CONFIG:RelWithDebInfo>:-fno-omit-frame-pointer>
 )
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Debug>:DEBUG>
+)
 target_link_libraries(${PROJECT_NAME} PRIVATE
     hidapi::hidapi
 )

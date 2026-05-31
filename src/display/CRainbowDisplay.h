@@ -8,6 +8,7 @@
 #include "CQC2SDisplay.h"
 #include "ColorTypes.h"
 #include "DisplayUtils.h"
+#include <chrono>
 #include <thread>
 
 enum ERainbowMode
@@ -106,6 +107,9 @@ public:
 
     bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
     {
+        using namespace std::chrono;
+        const auto FRAME_DURATION = 50ms;
+        const auto FRAME_START = steady_clock::now();
 
         if (m_mode == ERainbowMode::Flat)
         {
@@ -123,7 +127,10 @@ public:
             }
         }
 
-        std::this_thread::sleep_for(50ms); // rainbow doesnt need perfect delta timing, so w/e
+        const auto ELAPSED = steady_clock::now() - FRAME_START;
+        const auto REMAINING = FRAME_DURATION - ELAPSED;
+        if (REMAINING > REMAINING.zero())
+            std::this_thread::sleep_for(REMAINING);
         return true;
     }
 };

@@ -7,6 +7,7 @@
 
 #include "CQC2SDisplay.h"
 #include "DisplayUtils.h"
+#include <chrono>
 #include <thread>
 
 class CSolidColorDisplay : public CQC2SDisplay
@@ -19,8 +20,16 @@ public:
 
     bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
     {
+        using namespace std::chrono;
+        const auto FRAME_DURATION = 50ms;
+        const auto FRAME_START = steady_clock::now();
+
         SendMonoColorFrame(p_communicator, m_color);
-        std::this_thread::sleep_for(50ms); // solid doesnt need perfect delta timing, so w/e
+
+        const auto ELAPSED = steady_clock::now() - FRAME_START;
+        const auto REMAINING = FRAME_DURATION - ELAPSED;
+        if (REMAINING > REMAINING.zero())
+            std::this_thread::sleep_for(REMAINING);
         return true;
     }
 };

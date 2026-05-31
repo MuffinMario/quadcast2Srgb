@@ -49,10 +49,10 @@ public:
         }
 
         const auto *pResp = reinterpret_cast<const UQuadcast2CommandPacket *>(buf.data());
-        if (pResp->m_responsePacket.m_reportId != 0x11)
+        if (pResp->m_handshakeResponsePacket.m_reportId != 0x11)
         {
             LOG_ERROR(L"[Handshake] Unexpected reportId=0x"
-                      << std::hex << static_cast<int>(pResp->m_responsePacket.m_reportId)
+                      << std::hex << static_cast<int>(pResp->m_handshakeResponsePacket.m_reportId)
                       << std::dec);
             return nullptr;
         }

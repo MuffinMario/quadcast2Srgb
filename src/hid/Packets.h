@@ -39,12 +39,18 @@ struct SQuadcast2ResponseHandshakePacket : public SQuadcast2BasePacket
 {
     uint8_t m_unknown[20 * sizeof(SRGBColor)]; // content unknown, somewhere "6c" is mentioned => 108 leds
 };
+// 0xFF <deviceid> <unknown content>
+struct SQuadcast2ColorResponsePacket : public SQuadcast2BasePacket
+{
+    uint8_t m_unknown[20 * sizeof(SRGBColor)]; // content unknown, somewhere "6c" is mentioned => 108 leds
+};
 
 union UQuadcast2CommandPacket
 {
     SQuadcast2ColorPacket m_colorPacket;
     SQuadcast2HandshakePacket m_handshakePacket;
-    SQuadcast2ResponseHandshakePacket m_responsePacket;
+    SQuadcast2ResponseHandshakePacket m_handshakeResponsePacket;
+    SQuadcast2ColorResponsePacket m_colorResponsePacket;
     StaticByteArray<64> m_rawData{}; // init the packet with 0's first
 };
 

@@ -29,13 +29,19 @@ struct SHIDDeviceDeleter
     {
         if (p_pDev)
         {
-#if DEBUG
             hid_device_info *pInfo = hid_get_device_info(p_pDev);
             if (pInfo)
             {
-                LOG_VERBOSE("Closing device: " << pInfo->manufacturer_string << " " << pInfo->product_string << " (VID: " << std::hex << pInfo->vendor_id << " PID: " << pInfo->product_id << std::dec << " Serial: " << pInfo->serial_number << ")");
+                WString manufacturer = pInfo->manufacturer_string ? WString(pInfo->manufacturer_string) : L"";
+                WString product = pInfo->product_string ? WString(pInfo->product_string) : L"";
+                WString serial = pInfo->serial_number ? WString(pInfo->serial_number) : L"";
+                LOG_VERBOSE(
+                    L"Closing device: " << manufacturer.c_str() << 
+                    L" " << product.c_str() << 
+                    L" (VID: " << std::hex << pInfo->vendor_id << 
+                    L" PID: " << pInfo->product_id << std::dec << 
+                    L" Serial: " << serial.c_str() << L")");
             }
-#endif
             hid_close(p_pDev);
         }
     }

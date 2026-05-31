@@ -120,6 +120,7 @@ public:
         DynamicContainer<int> results(snapshot.size(), -1);
         for (size_t i = 0; i < snapshot.size(); ++i)
             results[i] = Send(snapshot[i], p_pData, p_size);
+        
         return results;
     }
 
@@ -134,10 +135,10 @@ public:
         for (size_t i = 0; i < snapshot.size(); ++i)
         {
             DynamicByteContainer buffer(p_bufferSize);
-            int res = hid_read_timeout(snapshot[i].get(), buffer.data(), buffer.size(), p_timeout);
+            // note: if we have multiple devices, timeouts are cumulative... WIP if this is a problem
+            int res = Read(snapshot[i], buffer.data(), buffer.size(), p_timeout);
             if (res < 0)
             {
-                LOG_ERROR("Failed to read from device: " << hid_error(snapshot[i].get()));
                 responses[i] = {};
             }
             else if (res > 0)
