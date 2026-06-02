@@ -6,6 +6,8 @@
 startup-display = "Solid"
 # optional, defaults to false
 # verbose = true
+# optional, defaults to false
+# no-wait-for-read = true
 # optional, defaults to [], this way you can restrict the program to only connect to a specific serial, in case you have multiple ones.
 #                       IF YOU HAVE MULTIPLE DEVICES FEEL FREE TO CONTACT ME! (I cannot test this myself) https://github.com/MuffinMario/quadcast2Srgb
 # allowed-serials = ["12345678", "87654321"]

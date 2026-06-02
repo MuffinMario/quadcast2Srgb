@@ -240,6 +240,7 @@ SConfigParseResult CConfigParser::Parse() const
     SConfigParseResult result{};
 
     result.m_verbose = OptionalBool(m_config, "verbose", false);
+    result.m_noWaitForRead = OptionalBool(m_config, "no-wait-for-read", false);
 
     if (auto pSerialsNode = m_config["allowed-serials"].as_array())
     {

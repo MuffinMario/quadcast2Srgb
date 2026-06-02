@@ -1,6 +1,7 @@
 # Small example demonstrating a shader config
 startup-display = "MyGLSLDisplay"
 # verbose = true
+# no-wait-for-read = true
 # allowed-serials = ["12345678", "87654321"]
 
 

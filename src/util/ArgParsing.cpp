@@ -59,6 +59,18 @@ bool ParseVerbose(int p_argc, char *p_pArgv[])
     return false;
 }
 
+bool ParseNoWaitForRead(int p_argc, char *p_pArgv[])
+{
+    for (int i = 1; i < p_argc; ++i)
+    {
+        if (String(p_pArgv[i]) == "--no-wait-for-read")
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool ParseHelp(int p_argc, char *p_pArgv[])
 {
     for (int i = 1; i < p_argc; ++i)
@@ -83,6 +95,10 @@ void PrintHelp(const char *p_pProgramName)
         L"\n"
         L"  --verbose\n"
         L"      Enable verbose logging.\n"
+        L"\n"
+        L"  --no-wait-for-read\n"
+        L"      Skip waiting for device response after sending color packets.\n"
+        L"      This may increase throughput but disables error checking.\n"
         L"\n"
         L"  --serial <serial>\n"
         L"      Restrict USB device operations to passed device(s) by serial number.\n"

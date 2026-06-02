@@ -10,6 +10,9 @@
 // Global verbosity flag (set from --verbose or DEBUG build)
 extern AtomicBool g_verbosity;
 
+// Global no-wait-for-read flag (set from --no-wait-for-read or config)
+extern AtomicBool g_noWaitForRead;
+
 // Global stop request flag (set by SIGINT/SIGTERM)
 extern AtomicBool g_signalStopRequest;
 

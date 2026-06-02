@@ -13,6 +13,7 @@ struct SConfigParseResult
 {
     UniquePtr<CQC2SDisplay> m_pDisplay;
     bool m_verbose = false;
+    bool m_noWaitForRead = false;
     Option<Set<WString>> m_allowedSerials = std::nullopt;
 };
 /*

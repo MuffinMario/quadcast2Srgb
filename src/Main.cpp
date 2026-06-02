@@ -77,6 +77,8 @@ UniquePtr<CQC2SDisplay> CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool &p
             }
             // if either option (arg or config) is verbose or config verbose is true, we want verbose on
             p_outVerbosity.store(parseResult.m_verbose | p_outVerbosity.load());
+            // if either option (arg or config) has no-wait-for-read, enable it
+            g_noWaitForRead.store(parseResult.m_noWaitForRead | g_noWaitForRead.load());
             // dont overwrite if they were passed via args
             if (!p_outAllowedSerials.has_value() && parseResult.m_allowedSerials.has_value() && !parseResult.m_allowedSerials->empty())
                 p_outAllowedSerials = parseResult.m_allowedSerials;
@@ -125,6 +127,7 @@ int main(int p_argc, char *p_pArgv[])
 #else
         ParseVerbose(p_argc, p_pArgv);
 #endif
+    g_noWaitForRead = ParseNoWaitForRead(p_argc, p_pArgv);
 
     UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv, g_verbosity, allowedSerials);
 

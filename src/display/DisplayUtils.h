@@ -8,6 +8,7 @@
 #include "../communicator/CQuadcast2SCommunicator.h"
 #include "../hid/Packets.h"
 #include "../video/VideoConstants.h"
+#include "../Globals.h"
 #include <cstring>
 
 // Number of sub-parts in one full color frame (0-5)
@@ -18,10 +19,8 @@ static constexpr size_t g_DISPLAY_LAST_SUBPART_LED_COUNT = 8;
 
 inline void HandleColorSendResponse(CQuadcast2SCommunicator &p_communicator)
 {
-    // activate erorr reponse headers: if (rand() % 51 != 0) return;
-    const bool READ_RESPONSE = true; // config
-    if (!READ_RESPONSE)
-        return;    
+    if (g_noWaitForRead)
+        return;
     // wait for response
     const uint32_t RESPONSE_TIMEOUT_MS = 100; // config
     auto responses = p_communicator.ReceiveResponse(sizeof(SQuadcast2ResponseHandshakePacket), RESPONSE_TIMEOUT_MS);
