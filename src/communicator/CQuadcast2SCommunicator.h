@@ -136,6 +136,7 @@ public:
         {
             DynamicByteContainer buffer(p_bufferSize);
             // note: if we have multiple devices, timeouts are cumulative... WIP if this is a problem
+            // Just use std::async at some point
             int res = Read(snapshot[i], buffer.data(), buffer.size(), p_timeout);
             if (res < 0)
             {

@@ -530,3 +530,5 @@ This example will also show you that the indices on LEDs are "snaking", traversi
 # What else to implement?
 - Capture input/output devices -> response / interface for further (customizable) displays like the GLSL shader.
 - Lua(JIT) interface for customization? (including all features of the program)
+- Save single display configs directly to device, if possible.
+    - I haven't looked into how saving to on board memory works, HyperX NGENUITY does offer the functionality.
