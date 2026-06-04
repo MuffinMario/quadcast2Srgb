@@ -113,16 +113,12 @@ void CAudioProcessor::ProcessFFT()
         }
 
         // Pre-compute max band for direct usage on some displays
-        float rawMax = 0.0f;
+        float maxBand = 0.0f;
         for (size_t i = 0; i < NUM_BINS; ++i)
-            rawMax = std::max(rawMax, m_spectrum.m_bands[i]);
+            maxBand = std::max(maxBand, m_spectrum.m_bands[i]);
 
-        // yet, we also apply smoothing if enabled
-        if (SMOOTH)
-            m_smoothedMaxBand = ALPHA * rawMax + ONE_MINUS_ALPHA * m_smoothedMaxBand;
-        else
-            m_smoothedMaxBand = rawMax;
-
+        // this is already smoothed if enabled... applying smoothing on a second layer might create a nice effect though
+        m_smoothedMaxBand = maxBand; 
         m_spectrum.m_maxBand = m_smoothedMaxBand;
     }
 }
