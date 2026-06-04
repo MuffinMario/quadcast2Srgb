@@ -15,6 +15,12 @@ struct SConfigParseResult
     bool m_verbose = false;
     bool m_noWaitForRead = false;
     Option<Set<WString>> m_allowedSerials = std::nullopt;
+
+    // ---- audio capture ----------------------------------------------------------
+    bool  m_enableAudio = false;               // must be explicitly enabled
+    Option<float> m_inputGain;                  // nullopt = use default (50.0)
+    Option<bool>  m_audioSmoothing;             // nullopt = use default (true)
+    Option<float> m_audioSmoothingAlpha;        // nullopt = use default (0.15)
 };
 /*
 Config parser is a toml++ wrapper to load and parse a config, given that the user wants to use one.

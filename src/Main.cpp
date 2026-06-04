@@ -61,7 +61,8 @@ void NotifySystemdStopping()
 #define SYSTEMD_NOTIFY_WATCHDOG_IF_DUE(interval, lastNotify)
 #endif
 
-UniquePtr<CQC2SDisplay> CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool &p_outVerbosity, Option<Set<WString>> &p_outAllowedSerials)
+UniquePtr<CQC2SDisplay> CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool &p_outVerbosity, Option<Set<WString>> &p_outAllowedSerials,
+                                      bool &p_outEnableAudio, Option<float> &p_outInputGain, Option<bool> &p_outAudioSmoothing, Option<float> &p_outAudioSmoothingAlpha)
 {
     // Check if we have a config defined
     auto configPathOpt = CConfigParser::ParseConfigPathArg(p_argc, p_pArgv);
@@ -80,6 +81,11 @@ UniquePtr<CQC2SDisplay> CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool &p
             p_outVerbosity.store(parseResult.m_verbose | p_outVerbosity.load());
             // if either option (arg or config) has no-wait-for-read, enable it
             g_noWaitForRead.store(parseResult.m_noWaitForRead | g_noWaitForRead.load());
+            // pass audio config out (may be overridden by CLI in main)
+            p_outEnableAudio         = parseResult.m_enableAudio;
+            p_outInputGain           = parseResult.m_inputGain;
+            p_outAudioSmoothing      = parseResult.m_audioSmoothing;
+            p_outAudioSmoothingAlpha = parseResult.m_audioSmoothingAlpha;
             // dont overwrite if they were passed via args
             if (!p_outAllowedSerials.has_value() && parseResult.m_allowedSerials.has_value() && !parseResult.m_allowedSerials->empty())
                 p_outAllowedSerials = parseResult.m_allowedSerials;
@@ -115,7 +121,7 @@ int main(int p_argc, char *p_pArgv[])
 
     */
     // "finder" logic
-    if (ParseHelp(p_argc, p_pArgv))
+    if (ParseFlag(p_argc, p_pArgv, {"--help", "-h"}))
     {
         PrintHelp(p_argc > 0 ? p_pArgv[0] : "qc2srgb");
         return EXIT_SUCCESS;
@@ -126,21 +132,39 @@ int main(int p_argc, char *p_pArgv[])
 #ifdef DEBUG
         true;
 #else
-        ParseVerbose(p_argc, p_pArgv);
+        ParseFlag(p_argc, p_pArgv, "--verbose");
 #endif
-    g_noWaitForRead = ParseNoWaitForRead(p_argc, p_pArgv);
+    g_noWaitForRead = ParseFlag(p_argc, p_pArgv, "--no-wait-for-read");
 
-    UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv, g_verbosity, allowedSerials);
+    // Parse audio CLI args
+    auto cliInputGain        = ParseFloatArg(p_argc, p_pArgv, "--input-gain");
+    bool cliNoAudioSmoothing = ParseFlag(p_argc, p_pArgv, "--no-audio-smoothing");
+    auto cliAudioSmoothingAlpha = ParseFloatArg(p_argc, p_pArgv, "--audio-smoothing-alpha");
 
-    // ── Audio capture: created once, shared across all displays ──────────
+    Option<float> cfgInputGain, cfgAudioSmoothingAlpha;
+    Option<bool>  cfgAudioSmoothing;
+    bool          cfgEnableAudio = false;
+    UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv, g_verbosity, allowedSerials,
+                                                      cfgEnableAudio, cfgInputGain, cfgAudioSmoothing, cfgAudioSmoothingAlpha);
+
+    // ── Audio capture: opt-in via --capture-audio or config key ──────────
     CAudioProcessor audioProcessor;
-    if (!audioProcessor.Initialize())
-        LOG(L"[Main] Audio capture failed to initialize; displays will have no audio data." );
-    else
+    bool enableAudio = ParseFlag(p_argc, p_pArgv, "--capture-audio") || cfgEnableAudio;
+    if (enableAudio)
     {
-        audioProcessor.SetInputGain(50.0f); // adjust as needed for your microphone; typical speaking distance may require 10× – 50×
-        audioProcessor.SetSmoothing(true, 0.15f); // enable smoothing with alpha=0.15 (adjust as desired; higher alpha = faster response)
-        pDisplay->SetAudioProcessor(&audioProcessor);
+        if (!audioProcessor.Initialize())
+            LOG(L"[Main] Audio capture failed to initialize; displays will have no audio data." );
+        else
+        {
+            // Precedence: CLI args > config file > defaults
+            float gain   = cliInputGain.value_or(cfgInputGain.value_or(50.0f));
+            bool  smooth = !cliNoAudioSmoothing && cfgAudioSmoothing.value_or(true);
+            float alpha  = cliAudioSmoothingAlpha.value_or(cfgAudioSmoothingAlpha.value_or(0.15f));
+
+            audioProcessor.SetInputGain(gain);
+            audioProcessor.SetSmoothing(smooth, alpha);
+            pDisplay->SetAudioProcessor(&audioProcessor);
+        }
     }
     // ─────────────────────────────────────────────────────────────────────
 

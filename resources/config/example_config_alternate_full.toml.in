@@ -8,7 +8,15 @@ startup-display = "Solid"
 # verbose = true
 # optional, defaults to false
 # no-wait-for-read = true
-# optional, defaults to [], this way you can restrict the program to only connect to a specific serial, in case you have multiple ones.
+# optional, must be enabled explicitly; defaults to false
+# capture-audio = true
+# optional, defaults to 50.0, directly amplifies the captured input device volume
+# input-gain = 50.0
+# optional, defaults to true, enables EMA to smooth out the device volume
+# audio-smoothing = true
+# optional, defaults to 0.15, if audio smoothing is enabled: the higher alpha, the more rapid we approach the current volume
+# audio-smoothing-alpha = 0.15
+# optional, defaults to [], this way you can restrict the program to only connect to a specific serial, in case you have multiple Quadcast 2S microphones connected and only want one to function with this configuration.
 #                       IF YOU HAVE MULTIPLE DEVICES FEEL FREE TO CONTACT ME! (I cannot test this myself) https://github.com/MuffinMario/quadcast2Srgb
 # allowed-serials = ["12345678", "87654321"]
 

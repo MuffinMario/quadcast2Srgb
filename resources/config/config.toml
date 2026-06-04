@@ -7,6 +7,14 @@ startup-display = "Pulse1"
 verbose = true
 # optional, defaults to false
 # no-wait-for-read = true
+# optional, must be enabled explicitly; defaults to false
+# capture-audio = true
+# optional, defaults to 50.0 (higher = more sensitive to quiet sounds)
+# input-gain = 50.0
+# optional, defaults to true (set to false for instant per-frame audio values)
+# audio-smoothing = true
+# optional, defaults to 0.15 (0–1, higher = faster response, lower = smoother)
+# audio-smoothing-alpha = 0.15
 # optional, defaults to [], this way you can restrict the program to only connect to a specific serial, in case you have multiple ones.
 #                       You can check your serial either through the console output when running this tool or by looking at the bottom of your microphone stand.
 #                       IF YOU HAVE MULTIPLE DEVICES FEEL FREE TO CONTACT ME! (I cannot test this myself) https://github.com/MuffinMario/quadcast2Srgb

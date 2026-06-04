@@ -47,41 +47,6 @@ Option<Set<WString>> ParseSerialArgs(int p_argc, char *p_pArgv[])
     return serials;
 }
 
-bool ParseVerbose(int p_argc, char *p_pArgv[])
-{
-    for (int i = 1; i < p_argc; ++i)
-    {
-        if (String(p_pArgv[i]) == "--verbose")
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool ParseNoWaitForRead(int p_argc, char *p_pArgv[])
-{
-    for (int i = 1; i < p_argc; ++i)
-    {
-        if (String(p_pArgv[i]) == "--no-wait-for-read")
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool ParseHelp(int p_argc, char *p_pArgv[])
-{
-    for (int i = 1; i < p_argc; ++i)
-    {
-        const String ARG(p_pArgv[i]);
-        if (ARG == "--help" || ARG == "-h")
-            return true;
-    }
-    return false;
-}
-
 void PrintHelp(const char *p_pProgramName)
 {
     LOG(
@@ -107,6 +72,26 @@ void PrintHelp(const char *p_pProgramName)
         L"  --config <path>\n"
         L"      Load display configuration from a TOML file.\n"
         L"      When provided, ALL --display arguments below are ignored.\n"
+        L"\n"
+        L"Audio capture options:\n"
+        L"\n"
+        L"  --capture-audio\n"
+        L"      Enable audio capture from the default input device.\n"
+        L"      Without this flag (or the config key) audio features are disabled.\n"
+        L"\n"
+        L"  --input-gain <float>\n"
+        L"      Multiplier applied to all frequency bands after FFT.\n"
+        L"      Higher values make the display more sensitive to quiet sounds.\n"
+        L"      Default: 50.0\n"
+        L"\n"
+        L"  --no-audio-smoothing\n"
+        L"      Disable exponential moving average smoothing of the frequency\n"
+        L"      spectrum.  By default smoothing is enabled to avoid flickering.\n"
+        L"\n"
+        L"  --audio-smoothing-alpha <float>\n"
+        L"      Smoothing speed when audio smoothing is enabled.\n"
+        L"      Range 0–1; higher = faster response, lower = smoother.\n"
+        L"      Default: 0.15\n"
         L"\n"
         L"Single(!) display options:\n"
         L"\n"

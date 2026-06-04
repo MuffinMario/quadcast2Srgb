@@ -242,6 +242,15 @@ SConfigParseResult CConfigParser::Parse() const
     result.m_verbose = OptionalBool(m_config, "verbose", false);
     result.m_noWaitForRead = OptionalBool(m_config, "no-wait-for-read", false);
 
+    // Audio capture settings (optional — must be enabled explicitly)
+    result.m_enableAudio = OptionalBool(m_config, "capture-audio", false);
+    if (auto val = m_config["input-gain"].value<double>())
+        result.m_inputGain = static_cast<float>(*val);
+    if (auto val = m_config["audio-smoothing"].value<bool>())
+        result.m_audioSmoothing = *val;
+    if (auto val = m_config["audio-smoothing-alpha"].value<double>())
+        result.m_audioSmoothingAlpha = static_cast<float>(*val);
+
     if (auto pSerialsNode = m_config["allowed-serials"].as_array())
     {
         Set<WString> allowed;

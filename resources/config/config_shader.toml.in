@@ -2,6 +2,10 @@
 startup-display = "MyGLSLDisplay"
 # verbose = true
 # no-wait-for-read = true
+# capture-audio = true
+# input-gain = 50.0
+# audio-smoothing = true
+# audio-smoothing-alpha = 0.15
 # allowed-serials = ["12345678", "87654321"]
 
 
