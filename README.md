@@ -384,7 +384,7 @@ Renders an OpenGL ES 3.00 fragment shader to the LED grid. See the [GLSL Shaders
 |---|---|---|---|---|
 | `shader-path` | string | **yes** | - | Absolute or relative path to the `.glsl` fragment shader file |
 | `shader-fps` | integer | no | `30` | Target frame rate. **Warning:** values above ~33 fps (due to it resulting in a frame delta < ~30 ms) may cause unwanted behavior as the microphone controller cannot process requests in time. |
-| `shader-scale` | integer | no | `1` | Supersampling scale — renders at `12·n × 9·n` pixels and block-averages down to 12×9. Values above 10 are not recommended due to diminishing returns for the increased compute cost, unless needed. |
+| `shader-scale` | integer | no | `1` | Supersampling scale: renders at `12·n × 9·n` pixels and block-averages down to 12×9. Values above 10 are not recommended due to diminishing returns for the increased compute cost, unless needed. |
 
 ```toml
 [[display]]

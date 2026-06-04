@@ -2,7 +2,7 @@ Source: quadcast2srgb
 Section: utils
 Priority: optional
 Maintainer: Mario T <admin@muffinmar.io>
-Build-Depends: debhelper-compat (= 13), build-essential, cmake (>= 3.16), gcc, pkg-config, libhidapi-dev, libsystemd-dev, libtomlplusplus-dev, libegl1-mesa-dev, libgles2-mesa-dev
+Build-Depends: debhelper-compat (= 13), build-essential, cmake (>= 3.16), gcc, pkg-config, libhidapi-dev, libsystemd-dev, libtomlplusplus-dev, libegl1-mesa-dev, libgles2-mesa-dev, libportaudio-dev, libfftw3-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/MuffinMario/quadcast2Srgb
 

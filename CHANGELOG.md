@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0] - 2026-06-04
+
+### Added
+- GLSL displays can now react to your microphone. The new uniform `u_audioVolume` makes it possible 
+  to get the current volume level in range of 0.0 (quiet) to 1.0 (loud).  Works out of the box with the default input device; no setup needed.
+- Displays will now wait for the microphone to respond to our LED requests. New config key `no-wait-for-read` and CLI flag `--no-wait-for-read` skip this option.  By default the program will wait for the microphone controller though. Disabling it might increase the frames per second, but might create unwanted behavior; use with caution.
+
 ## [0.3.0] - 2026-05-30
 
 ### Added

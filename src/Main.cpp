@@ -11,6 +11,7 @@
 #include "hid/CQuadcast2SHandshaker.h"
 #include "communicator/CQuadcast2SCommunicator.h"
 #include "display/CQC2SDisplayFactory.h"
+#include "audio/CAudioProcessor.h"
 #include "util/ArgParsing.h"
 #include "util/ConfigParser.h"
 
@@ -131,6 +132,18 @@ int main(int p_argc, char *p_pArgv[])
 
     UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv, g_verbosity, allowedSerials);
 
+    // ── Audio capture: created once, shared across all displays ──────────
+    CAudioProcessor audioProcessor;
+    if (!audioProcessor.Initialize())
+        LOG(L"[Main] Audio capture failed to initialize; displays will have no audio data." );
+    else
+    {
+        audioProcessor.SetInputGain(50.0f); // adjust as needed for your microphone; typical speaking distance may require 10× – 50×
+        audioProcessor.SetSmoothing(true, 0.15f); // enable smoothing with alpha=0.15 (adjust as desired; higher alpha = faster response)
+        pDisplay->SetAudioProcessor(&audioProcessor);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Finder -> handshake thread pipeline
     CQuadcast2SHandshaker handshaker;
     HIDDeviceContainer finderHandshakeDevicesPass;
@@ -160,11 +173,6 @@ int main(int p_argc, char *p_pArgv[])
         {
             HIDDeviceContainer devices;
             Set<WString> connectedSerials = communicator.GetOpenSerials();
-
-            // noisy... will be removed after lack of device desync/detaching issues on multiple other devic/userss
-            LOG_VERBOSE(L"[Finder] Current connected serials: ");
-            for (const auto &s : connectedSerials)
-                LOG_VERBOSE(s << L" ");
 
             devices = finder.FindDevices(g_QUADCAST2S_USB_ID,
                                          allowedSerials,
@@ -395,6 +403,10 @@ int main(int p_argc, char *p_pArgv[])
     tFinder.join();
     tConnector.join();
     tSender.join();
+
+    // ── Shut down audio capture ──────────────────────────────────────────
+    audioProcessor.Shutdown();
+    // ─────────────────────────────────────────────────────────────────────
 
     // shutdown
     SYSTEMD_NOTIFY_STOPPING;

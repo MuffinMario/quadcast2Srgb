@@ -370,7 +370,7 @@
             "args": [
                 "--verbose",
                 "--display", "glsl",
-                "--shader-path", "${workspaceFolder}/resources/shader/ripple.glsl",
+                "--shader-path", "${workspaceFolder}/resources/shader/audiosphere.glsl",
                 "--shader-fps", "60",
                 "--shader-scale","50"
             ],

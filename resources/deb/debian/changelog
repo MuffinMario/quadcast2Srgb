@@ -1,3 +1,15 @@
+quadcast2srgb (0.4.0) unstable; urgency=medium
+
+  * Audio input capture via PortAudio + FFTW3: real-time frequency spectrum exposed to GLSL shaders
+    through a new `u_audioVolume` uniform (aliases: iAudioVolume, audioVolume), carrying the
+    dominant frequency-band amplitude as a 0–1 float.  The audio processor is created once in
+    main() and shared across all displays via SetAudioProcessor().
+  * Color-packet response validation: after each sub-part send the program now reads the device
+    response to confirm the command was accepted.  New CLI flag `--no-wait-for-read` and config
+    key `no-wait-for-read` (boolean, default false) skip this response wait for higher throughput.
+
+ -- Mario T <admin@muffinmar.io>  Wed, 04 Jun 2026 00:00:00 +0000
+
 quadcast2srgb (0.3.0) unstable; urgency=medium
 
   * New display `glsl`: renders an OpenGL ES 3.00 fragment shader to the LED grid via EGL headless rendering.

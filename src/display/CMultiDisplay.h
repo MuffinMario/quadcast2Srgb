@@ -34,6 +34,13 @@ public:
         m_displays.push_back(std::move(p_display));
     }
 
+    void SetAudioProcessor(CAudioProcessor *p_pProcessor) override
+    {
+        CQC2SDisplay::SetAudioProcessor(p_pProcessor);
+        for (auto &pDisplay : m_displays)
+            pDisplay->SetAudioProcessor(p_pProcessor);
+    }
+
     bool Initialize() override
     {
         // init transition map for multidisplay

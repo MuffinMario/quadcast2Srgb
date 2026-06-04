@@ -34,9 +34,10 @@ class CGLSLDisplay : public CQC2SDisplay
     GLuint m_vao        = 0; // empty VAO; positions come from gl_VertexID in vertex shader
 
     // Uniform locations, -1 meaning not present in shader
-    GLint m_uTime       = -1;
-    GLint m_uResolution = -1;
-    GLint m_uFrame      = -1;
+    GLint m_uTime        = -1;
+    GLint m_uResolution  = -1;
+    GLint m_uFrame       = -1;
+    GLint m_uAudioVolume = -1;
 
     int m_frameCount = 0;
     std::chrono::steady_clock::time_point m_startTime;
@@ -276,9 +277,10 @@ public:
             return -1;
         };
 
-        m_uTime       = resolveUniform({"iTime",       "u_time",       "time"});
-        m_uResolution = resolveUniform({"iResolution", "u_resolution", "resolution"});
-        m_uFrame      = resolveUniform({"iFrame",      "u_frame",      "frame"});
+        m_uTime        = resolveUniform({"iTime",        "u_time",        "time"});
+        m_uResolution  = resolveUniform({"iResolution",  "u_resolution",  "resolution"});
+        m_uFrame       = resolveUniform({"iFrame",       "u_frame",       "frame"});
+        m_uAudioVolume = resolveUniform({"iAudioVolume", "u_audioVolume", "audioVolume"});
 
         // Set up FBO 
         glGenTextures(1, &m_fboTexture);
@@ -363,6 +365,13 @@ public:
                         static_cast<float>(g_VIDEO_HEIGHT * m_resolutionScale));
         if (m_uFrame != -1)
             glUniform1i(m_uFrame, m_frameCount);
+
+        if (m_uAudioVolume != -1)
+        {
+            auto spectrum = GetAudioSpectrum();
+            float volume = spectrum.IsValid() ? spectrum.m_maxBand : 0.0f;
+            glUniform1f(m_uAudioVolume, volume);
+        }
 
         // render to our FBO
         glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);

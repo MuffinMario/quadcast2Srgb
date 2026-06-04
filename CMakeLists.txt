@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(qc2srgb
-    VERSION 0.3.0
+    VERSION 0.4.0
     LANGUAGES CXX
 )
 
@@ -24,6 +24,11 @@ else()
     message(STATUS "hidapi found via pkg-config (hidapi-hidraw)")
 endif()
 #find_package(flatbuffers REQUIRED)
+
+# PortAudio + FFTW3 (audio capture + spectrum analysis)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PORTAUDIO REQUIRED IMPORTED_TARGET portaudio-2.0)
+pkg_check_modules(FFTW3    REQUIRED IMPORTED_TARGET fftw3)
 
 # systemd integration (opt-in via -DUSE_SYSTEMD=ON)
 option(USE_SYSTEMD "Enable systemd integration" OFF)
@@ -75,6 +80,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
     hidapi::hidapi
+    PkgConfig::PORTAUDIO
+    PkgConfig::FFTW3
 )
 
 
