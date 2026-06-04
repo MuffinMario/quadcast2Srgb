@@ -32,5 +32,5 @@ public:
     static UniquePtr<CQC2SDisplay> CreateGLSLDisplay(String p_shaderPath, uint32_t p_fps = 30, uint32_t p_resolutionScale = 1, String p_name = "glsl", UniquePtr<CEndCondition> p_pEndCondition = nullptr, String p_nextDisplay = "");
 #endif
 
-    static UniquePtr<CQC2SDisplay> CreateFromArgs(int p_argc, char *p_pArgv[]);
+    // CreateFromArgs has been moved to CConfigBuilder (src/config/CConfigBuilder.h)
 };

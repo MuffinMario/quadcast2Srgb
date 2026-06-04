@@ -17,14 +17,15 @@ out vec4 fragColor;
 void main()
 {
     // Center-origin UV, normalized so the shorter axis spans [-0.5, 0.5]
-    vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / min(u_resolution.x, u_resolution.y);
-    uv *= vec2(0.2,1.0);
+    vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) 
+                / min(u_resolution.x, u_resolution.y);
+    uv *= vec2(0.2,1.0); 
     // Distance from center
     float dist = length(uv);
 
-    float vol = u_audioVolume;
+    float vol = u_audioVolume+.0;
     float innerRadius  = 0.05 + vol * 0.025;
-    float outerRadius = 0.1 + vol * 0.1;
+    float outerRadius = 0.1 + vol * 0.4; 
     
     vec3 circleColor = vec3(0.2392, 0.0627, 0.2941);
     vec3 outerColor = vec3(0.);//vec3(0.2275, 0.0392, 0.2863);

@@ -8,3 +8,5 @@
 AtomicBool g_verbosity = false;
 AtomicBool g_noWaitForRead = false;
 AtomicBool g_signalStopRequest = false;
+
+Mutex g_logMutex;

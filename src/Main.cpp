@@ -6,14 +6,13 @@
 
 #include "Common.h"
 #include "Globals.h"
+#include "config/CConfigBuilder.h"
 #include "hid/HIDTypes.h"
 #include "hid/CUSBDeviceFinder.h"
 #include "hid/CQuadcast2SHandshaker.h"
 #include "communicator/CQuadcast2SCommunicator.h"
-#include "display/CQC2SDisplayFactory.h"
 #include "audio/CAudioProcessor.h"
 #include "util/ArgParsing.h"
-#include "util/ConfigParser.h"
 
 #include <csignal>
 #include <iostream>
@@ -61,49 +60,8 @@ void NotifySystemdStopping()
 #define SYSTEMD_NOTIFY_WATCHDOG_IF_DUE(interval, lastNotify)
 #endif
 
-UniquePtr<CQC2SDisplay> CreateDisplay(int p_argc, char *p_pArgv[], AtomicBool &p_outVerbosity, Option<Set<WString>> &p_outAllowedSerials,
-                                      bool &p_outEnableAudio, Option<float> &p_outInputGain, Option<bool> &p_outAudioSmoothing, Option<float> &p_outAudioSmoothingAlpha)
-{
-    // Check if we have a config defined
-    auto configPathOpt = CConfigParser::ParseConfigPathArg(p_argc, p_pArgv);
-    if (configPathOpt.has_value())
-    {
-        try
-        {
-            CConfigParser configParser(configPathOpt.value());
-            auto parseResult = configParser.Parse();
-            if (!parseResult.m_pDisplay)
-            {
-                LOG_ERROR(L"Config parsing failed: no startup display defined.");
-                return nullptr;
-            }
-            // if either option (arg or config) is verbose or config verbose is true, we want verbose on
-            p_outVerbosity.store(parseResult.m_verbose | p_outVerbosity.load());
-            // if either option (arg or config) has no-wait-for-read, enable it
-            g_noWaitForRead.store(parseResult.m_noWaitForRead | g_noWaitForRead.load());
-            // pass audio config out (may be overridden by CLI in main)
-            p_outEnableAudio         = parseResult.m_enableAudio;
-            p_outInputGain           = parseResult.m_inputGain;
-            p_outAudioSmoothing      = parseResult.m_audioSmoothing;
-            p_outAudioSmoothingAlpha = parseResult.m_audioSmoothingAlpha;
-            // dont overwrite if they were passed via args
-            if (!p_outAllowedSerials.has_value() && parseResult.m_allowedSerials.has_value() && !parseResult.m_allowedSerials->empty())
-                p_outAllowedSerials = parseResult.m_allowedSerials;
-            else if (parseResult.m_allowedSerials.has_value())
-                LOG_ERROR(L"[Main] Ignoring allowed serials from config because they were also passed via command line arguments.");
-            return std::move(parseResult.m_pDisplay);
-        }
-        catch (const std::exception &e)
-        {
-            LOG_ERROR(L"Failed to parse config: " << WStr(e.what()));
-            return nullptr;
-        }
-    }
-    else
-    {
-        return CQC2SDisplayFactory::CreateFromArgs(p_argc, p_pArgv);
-    }
-}
+// CreateDisplay has been replaced by CConfigBuilder::Build()
+// See src/config/CConfigBuilder.h
 
 int main(int p_argc, char *p_pArgv[])
 {
@@ -120,50 +78,42 @@ int main(int p_argc, char *p_pArgv[])
      '---------------------------'
 
     */
-    // "finder" logic
+    // ── Handle --help early ─────────────────────────────────────────────
     if (ParseFlag(p_argc, p_pArgv, {"--help", "-h"}))
     {
         PrintHelp(p_argc > 0 ? p_pArgv[0] : "qc2srgb");
         return EXIT_SUCCESS;
     }
 
-    auto allowedSerials = ParseSerialArgs(p_argc, p_pArgv);
+    // ── Build unified configuration (CLI args + optional config file) ──
+    SProgramConfig cfg = CConfigBuilder::Build(p_argc, p_pArgv);
+
+    // Apply config to globals
     g_verbosity =
 #ifdef DEBUG
         true;
 #else
-        ParseFlag(p_argc, p_pArgv, "--verbose");
+        cfg.m_verbose;
 #endif
-    g_noWaitForRead = ParseFlag(p_argc, p_pArgv, "--no-wait-for-read");
+    g_noWaitForRead.store(cfg.m_noWaitForRead);
 
-    // Parse audio CLI args
-    auto cliInputGain        = ParseFloatArg(p_argc, p_pArgv, "--input-gain");
-    bool cliNoAudioSmoothing = ParseFlag(p_argc, p_pArgv, "--no-audio-smoothing");
-    auto cliAudioSmoothingAlpha = ParseFloatArg(p_argc, p_pArgv, "--audio-smoothing-alpha");
+    if (!cfg.m_pDisplay)
+    {
+        LOG_ERROR(L"No startup display could be created. Exiting.");
+        return EXIT_FAILURE;
+    }
 
-    Option<float> cfgInputGain, cfgAudioSmoothingAlpha;
-    Option<bool>  cfgAudioSmoothing;
-    bool          cfgEnableAudio = false;
-    UniquePtr<CQC2SDisplay> pDisplay = CreateDisplay(p_argc, p_pArgv, g_verbosity, allowedSerials,
-                                                      cfgEnableAudio, cfgInputGain, cfgAudioSmoothing, cfgAudioSmoothingAlpha);
-
-    // ── Audio capture: opt-in via --capture-audio or config key ──────────
+    // ── Audio capture ───────────────────────────────────────────────────
     CAudioProcessor audioProcessor;
-    bool enableAudio = ParseFlag(p_argc, p_pArgv, "--capture-audio") || cfgEnableAudio;
-    if (enableAudio)
+    if (cfg.m_enableAudio)
     {
         if (!audioProcessor.Initialize())
-            LOG(L"[Main] Audio capture failed to initialize; displays will have no audio data." );
+            LOG(L"[Main] Audio capture failed to initialize; displays will have no audio data.");
         else
         {
-            // Precedence: CLI args > config file > defaults
-            float gain   = cliInputGain.value_or(cfgInputGain.value_or(50.0f));
-            bool  smooth = !cliNoAudioSmoothing && cfgAudioSmoothing.value_or(true);
-            float alpha  = cliAudioSmoothingAlpha.value_or(cfgAudioSmoothingAlpha.value_or(0.15f));
-
-            audioProcessor.SetInputGain(gain);
-            audioProcessor.SetSmoothing(smooth, alpha);
-            pDisplay->SetAudioProcessor(&audioProcessor);
+            audioProcessor.SetInputGain(cfg.m_inputGain);
+            audioProcessor.SetSmoothing(cfg.m_audioSmoothing, cfg.m_audioSmoothingAlpha);
+            cfg.m_pDisplay->SetAudioProcessor(&audioProcessor);
         }
     }
     // ─────────────────────────────────────────────────────────────────────
@@ -199,7 +149,7 @@ int main(int p_argc, char *p_pArgv[])
             Set<WString> connectedSerials = communicator.GetOpenSerials();
 
             devices = finder.FindDevices(g_QUADCAST2S_USB_ID,
-                                         allowedSerials,
+                                         cfg.m_allowedSerials,
                                          connectedSerials);
             // new devices found, pass to connector thread
             if (!devices.empty())
@@ -377,7 +327,7 @@ int main(int p_argc, char *p_pArgv[])
 
     auto senderThread = [&]()
     {
-        pDisplay->Display(
+        cfg.m_pDisplay->Display(
             communicator,
             g_signalStopRequest,
             handleIncomingNewDevices);
@@ -391,9 +341,9 @@ int main(int p_argc, char *p_pArgv[])
     std::signal(SIGTERM, [](int)
                 { g_signalStopRequest = true; });
 
-    if (!pDisplay->Initialize())
+    if (!cfg.m_pDisplay->Initialize())
     {
-        LOG_ERROR(L"Failed to initialize display: " + WStr(pDisplay->GetName()));
+        LOG_ERROR(L"Failed to initialize display: " + WStr(cfg.m_pDisplay->GetName()));
         return EXIT_FAILURE;
     }
 
@@ -420,7 +370,7 @@ int main(int p_argc, char *p_pArgv[])
     }
 
     LOG(L"[Main] Found device. Starting sender thread..." );
-    pDisplay->Reset();
+    cfg.m_pDisplay->Reset();
     Thread tSender(senderThread);
 
     // joins here
@@ -434,6 +384,6 @@ int main(int p_argc, char *p_pArgv[])
 
     // shutdown
     SYSTEMD_NOTIFY_STOPPING;
-    pDisplay->Shutdown(communicator);
+    cfg.m_pDisplay->Shutdown(communicator);
     return EXIT_SUCCESS;
 }

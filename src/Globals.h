@@ -16,11 +16,15 @@ extern AtomicBool g_noWaitForRead;
 // Global stop request flag (set by SIGINT/SIGTERM)
 extern AtomicBool g_signalStopRequest;
 
+// Global logging mutex (prevents interleaved wclog output from multiple threads)
+extern Mutex g_logMutex;
+
 #define LOG_VERBOSE(msg) \
     do { \
         if (g_verbosity) { \
             WStringStream wss; \
             wss << msg << L'\n'; \
+            LockGuard lg(g_logMutex); \
             std::wclog << wss.str(); \
         } \
     } while(0)
@@ -29,6 +33,7 @@ extern AtomicBool g_signalStopRequest;
     do { \
         WStringStream wss; \
         wss << L"[ERROR] " << msg << L'\n'; \
+        LockGuard lg(g_logMutex); \
         std::wclog << wss.str(); \
     } while(0)
 
@@ -36,6 +41,7 @@ extern AtomicBool g_signalStopRequest;
     do { \
         WStringStream wss; \
         wss << msg << L'\n'; \
+        LockGuard lg(g_logMutex); \
         std::wclog << wss.str(); \
     } while(0)
 
