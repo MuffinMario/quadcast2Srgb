@@ -35,6 +35,8 @@ struct SProgramConfig
     float m_inputGain           = 50.0f;
     bool  m_audioSmoothing      = true;
     float m_audioSmoothingAlpha = 0.15f;
+    Option<int> m_audioDeviceId;        // nullopt = default input device
+    Option<int> m_audioChannel;         // nullopt = first channel (0)
 
     // ── Startup display ───────────────────────────────────────────────────
     UniquePtr<CQC2SDisplay> m_pDisplay;

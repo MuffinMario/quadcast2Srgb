@@ -46,6 +46,20 @@ inline Option<float> ParseFloatArg(int p_argc, char *p_pArgv[], const String &p_
     return std::nullopt;
 }
 
+/// Returns the value following @p p_flagName as an int, or nullopt.
+inline Option<int> ParseIntArg(int p_argc, char *p_pArgv[], const String &p_flagName)
+{
+    for (int i = 1; i < p_argc; ++i)
+    {
+        if (String(p_pArgv[i]) == p_flagName && i + 1 < p_argc)
+        {
+            try { return static_cast<int>(std::stol(p_pArgv[i + 1])); }
+            catch (...) { return std::nullopt; }
+        }
+    }
+    return std::nullopt;
+}
+
 // ── Specialised parsers (kept for non-trivial logic) ─────────────────────────
 
 Option<SRGBColor> ParseHexColor(String p_colorStr);

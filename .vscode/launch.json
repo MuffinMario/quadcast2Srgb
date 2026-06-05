@@ -373,7 +373,10 @@
                 "--shader-path", "${workspaceFolder}/resources/shader/audiosphere.glsl",
                 "--shader-fps", "60",
                 "--shader-scale","50",
-                "--capture-audio" // if we dont enable audio capturing u_audioVolume is always 0.0
+                "--capture-audio", // if we dont enable audio capturing u_audioVolume is always 0.0
+                "--audio-smoothing-alpha","0.15",
+                "--audio-device-id","12",
+                "--audio-channel","127"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

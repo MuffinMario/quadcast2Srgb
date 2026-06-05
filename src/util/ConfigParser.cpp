@@ -250,6 +250,10 @@ SConfigParseResult CConfigParser::Parse() const
         result.m_audioSmoothing = *val;
     if (auto val = m_config["audio-smoothing-alpha"].value<double>())
         result.m_audioSmoothingAlpha = static_cast<float>(*val);
+    if (auto val = m_config["device-id"].value<int64_t>())
+        result.m_audioDeviceId = static_cast<int>(*val);
+    if (auto val = m_config["channel"].value<int64_t>())
+        result.m_audioChannel = static_cast<int>(*val);
 
     if (auto pSerialsNode = m_config["allowed-serials"].as_array())
     {

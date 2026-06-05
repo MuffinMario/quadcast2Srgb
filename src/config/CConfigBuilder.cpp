@@ -206,9 +206,11 @@ UniquePtr<CQC2SDisplay> CreateDisplayFromArgs(const SDisplayArgs &p_args)
 struct SAudioCliFlags
 {
     Option<float> m_inputGain;
-    bool          m_noSmoothing  = false;   // --no-audio-smoothing present
+    bool          m_noSmoothing    = false;   // --no-audio-smoothing present
     Option<float> m_smoothingAlpha;
-    bool          m_captureAudio = false;   // --capture-audio present
+    bool          m_captureAudio   = false;   // --capture-audio present
+    Option<int>   m_audioDeviceId;             // --audio-device-id <n>
+    Option<int>   m_audioChannel;              // --audio-channel <n>
 };
 
 SAudioCliFlags ParseAudioCliFlags(int p_argc, char *p_pArgv[])
@@ -218,6 +220,8 @@ SAudioCliFlags ParseAudioCliFlags(int p_argc, char *p_pArgv[])
     cli.m_inputGain      = ParseFloatArg(p_argc, p_pArgv, "--input-gain");
     cli.m_noSmoothing    = ParseFlag(p_argc, p_pArgv, "--no-audio-smoothing");
     cli.m_smoothingAlpha = ParseFloatArg(p_argc, p_pArgv, "--audio-smoothing-alpha");
+    cli.m_audioDeviceId  = ParseIntArg(p_argc, p_pArgv, "--audio-device-id");
+    cli.m_audioChannel   = ParseIntArg(p_argc, p_pArgv, "--audio-channel");
     return cli;
 }
 
@@ -247,6 +251,12 @@ void MergeAudioSettings(SProgramConfig &p_cfg, const SAudioCliFlags &p_cli,
             p_cfg.m_audioSmoothingAlpha = *p_pConfig->m_audioSmoothingAlpha;
     }
 
+    // deviceId / channel: CLI > Config > nullopt
+    if (!p_cli.m_audioDeviceId.has_value() && p_pConfig && p_pConfig->m_audioDeviceId.has_value())
+        p_cfg.m_audioDeviceId = p_pConfig->m_audioDeviceId;
+    if (!p_cli.m_audioChannel.has_value() && p_pConfig && p_pConfig->m_audioChannel.has_value())
+        p_cfg.m_audioChannel = p_pConfig->m_audioChannel;
+
     // CLI overrides (highest priority)
     if (p_cli.m_inputGain.has_value())
         p_cfg.m_inputGain = *p_cli.m_inputGain;
@@ -254,6 +264,10 @@ void MergeAudioSettings(SProgramConfig &p_cfg, const SAudioCliFlags &p_cli,
         p_cfg.m_audioSmoothing = false;
     if (p_cli.m_smoothingAlpha.has_value())
         p_cfg.m_audioSmoothingAlpha = *p_cli.m_smoothingAlpha;
+    if (p_cli.m_audioDeviceId.has_value())
+        p_cfg.m_audioDeviceId = p_cli.m_audioDeviceId;
+    if (p_cli.m_audioChannel.has_value())
+        p_cfg.m_audioChannel = p_cli.m_audioChannel;
 }
 
 } // anonymous namespace

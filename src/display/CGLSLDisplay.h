@@ -455,6 +455,7 @@ public:
         //auto avgG = totalG / g_LED_COUNT;
         //auto avgB = totalB / g_LED_COUNT;
         //LOG_VERBOSE(L"CGLSLDisplay: avg color: (" << avgR << ", " << avgG << ", " << avgB << ")");
+
         SendColorFrame(p_communicator, frame.data());
 
         // next frame prep

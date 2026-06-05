@@ -78,10 +78,15 @@ int main(int p_argc, char *p_pArgv[])
      '---------------------------'
 
     */
-    // ── Handle --help early ─────────────────────────────────────────────
+    // ── Handle early-exit flags ───────────────────────────────────────
     if (ParseFlag(p_argc, p_pArgv, {"--help", "-h"}))
     {
         PrintHelp(p_argc > 0 ? p_pArgv[0] : "qc2srgb");
+        return EXIT_SUCCESS;
+    }
+    if (ParseFlag(p_argc, p_pArgv, {"--list-audio-devices"}))
+    {
+        CAudioProcessor::PrintDevices();
         return EXIT_SUCCESS;
     }
 
@@ -107,8 +112,11 @@ int main(int p_argc, char *p_pArgv[])
     CAudioProcessor audioProcessor;
     if (cfg.m_enableAudio)
     {
-        if (!audioProcessor.Initialize())
-            LOG(L"[Main] Audio capture failed to initialize; displays will have no audio data.");
+        if (!audioProcessor.Initialize(1024, cfg.m_audioDeviceId, cfg.m_audioChannel))
+        {
+            LOG("[Main] Failed to initialize audio processor.");
+            return EXIT_FAILURE;
+        }
         else
         {
             audioProcessor.SetInputGain(cfg.m_inputGain);

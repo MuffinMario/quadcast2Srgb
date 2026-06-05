@@ -28,6 +28,8 @@ class CAudioProcessor
     // ---- PCM accumulation --------------------------------------------------------
     DynamicContainer<float> m_pcmBuffer; // circular-ish: fills up to m_fftSize
     size_t m_pcmWritePos = 0;            // next free slot in m_pcmBuffer
+    int m_channelIndex    = 0;           // which input channel to analyse (0 = first)
+    int m_numChannels     = 1;           // how many channels the opened stream has
 
     // ---- Windowing ---------------------------------------------------------------
     DynamicContainer<double> m_window;   // Hann window coefficients, size m_fftSize
@@ -57,6 +59,12 @@ class CAudioProcessor
     void ProcessFFT();
 
 public:
+    /// Enumerate all PortAudio audio devices and log their details.
+    /// Prints device ID, name, host API, max input/output channels,
+    /// and default sample rate.  Call before Initialize() or after Shutdown()
+    /// (PortAudio must not be active).
+    static void PrintDevices();
+
     CAudioProcessor() = default;
     ~CAudioProcessor();
 
@@ -66,10 +74,14 @@ public:
     CAudioProcessor(CAudioProcessor &&) = delete;
     CAudioProcessor &operator=(CAudioProcessor &&) = delete;
 
-    /// Open the default input device and start capturing.
-    /// @param p_fftSize  FFT window size (must be a power of 2, default 1024).
+    /// Open an input device and start capturing.
+    /// @param p_fftSize   FFT window size (must be a power of 2, default 1024).
+    /// @param p_deviceId  Optional PortAudio device index; nullopt = default input device.
+    /// @param p_channel   Optional channel index to analyse (0 = first, nullopt = 0).
     /// @return true on success.
-    bool Initialize(uint32_t p_fftSize = 1024);
+    bool Initialize(uint32_t p_fftSize = 1024,
+                    Option<int> p_deviceId = std::nullopt,
+                    Option<int> p_channel  = std::nullopt);
 
     /// Stop capture, destroy FFTW plan, free buffers.
     void Shutdown();

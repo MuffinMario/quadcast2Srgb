@@ -21,6 +21,8 @@ struct SConfigParseResult
     Option<float> m_inputGain;                  // nullopt = use default (50.0)
     Option<bool>  m_audioSmoothing;             // nullopt = use default (true)
     Option<float> m_audioSmoothingAlpha;        // nullopt = use default (0.15)
+    Option<int> m_audioDeviceId;                // nullopt = default input device
+    Option<int> m_audioChannel;                 // nullopt = first channel (0)
 };
 /*
 Config parser is a toml++ wrapper to load and parse a config, given that the user wants to use one.

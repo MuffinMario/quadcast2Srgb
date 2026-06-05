@@ -12,30 +12,53 @@
 
 // ── PortAudio callback ─────────────────────────────────────────────────────────
 
-int CAudioProcessor::PaCallback(const void *p_pInput, void * /*p_pOutput*/,
+int CAudioProcessor::PaCallback(const void *p_pInput, void * /*p_pOutput*/, 
                                 unsigned long p_frameCount,
                                 const PaStreamCallbackTimeInfo * /*p_pTimeInfo*/,
                                 PaStreamCallbackFlags /*p_statusFlags*/,
                                 void *p_pUserData)
 {
     auto *pThis = static_cast<CAudioProcessor *>(p_pUserData);
-    if (!p_pInput || p_frameCount == 0)
+    auto *pStream = p_pInput;
+    if (!p_pInput || !pStream || p_frameCount == 0)
         return paContinue;
 
-    const auto *pSamples = static_cast<const float *>(p_pInput);
+    const auto *pSamples = static_cast<const float *>(pStream);
 
-    // Accumulate PCM samples into the buffer until we have a full FFT window
-    // this will iterate over all incoming frames, the loop will handle as many FFT windows as fit into the incoming data
+    // Accumulate PCM samples (de-interleave if the stream has multiple channels)
     while (p_frameCount > 0)
     {
         size_t remaining = pThis->m_fftSize - pThis->m_pcmWritePos;
         size_t toCopy    = std::min(remaining, static_cast<size_t>(p_frameCount));
 
-        std::memcpy(pThis->m_pcmBuffer.data() + pThis->m_pcmWritePos,
-                    pSamples,
-                    toCopy * sizeof(float));
+        if (pThis->m_numChannels > 1)
+        {
+            // Pick only the desired channel from interleaved data
+            float *pBuf = pThis->m_pcmBuffer.data() + pThis->m_pcmWritePos;
+            for (size_t j = 0; j < toCopy; ++j)
+                pBuf[j] = pSamples[j * pThis->m_numChannels + pThis->m_channelIndex];
+            for(size_t c = 0; c < pThis->m_numChannels; ++c)
+                for (size_t j = 0; j < toCopy; ++j)
+                {
+
+                    auto val = pSamples[j * pThis->m_numChannels + c];
+                    if(val != 0.0f)
+                    {
+                        
+                        LOG_VERBOSE(L"CAudioProcessor: sample[" << j << "][" << c << "] = " << val);
+                        break;
+                    }
+                }
+            pSamples += toCopy * pThis->m_numChannels;
+        }
+        else
+        {
+            std::memcpy(pThis->m_pcmBuffer.data() + pThis->m_pcmWritePos,
+                        pSamples,
+                        toCopy * sizeof(float));
+            pSamples += toCopy;
+        }
         pThis->m_pcmWritePos += toCopy;
-        pSamples             += toCopy;
         p_frameCount         -= toCopy;
 
         if (pThis->m_pcmWritePos >= pThis->m_fftSize)
@@ -123,6 +146,57 @@ void CAudioProcessor::ProcessFFT()
     }
 }
 
+// ── Device enumeration ─────────────────────────────────────────────────────────
+
+void CAudioProcessor::PrintDevices()
+{
+    PaError paErr = Pa_Initialize();
+    if (paErr != paNoError)
+    {
+        LOG_ERROR(L"CAudioProcessor: Pa_Initialize failed during device listing: "
+                  << WStr(Pa_GetErrorText(paErr)));
+        return;
+    }
+
+    PaDeviceIndex defaultInput  = Pa_GetDefaultInputDevice();
+    PaDeviceIndex defaultOutput = Pa_GetDefaultOutputDevice();
+    PaDeviceIndex numDevices    = Pa_GetDeviceCount();
+
+    if (numDevices < 0)
+    {
+        LOG_ERROR(L"CAudioProcessor: Pa_GetDeviceCount returned error");
+        Pa_Terminate();
+        return;
+    }
+
+    LOG(L"--- PortAudio Devices (" << numDevices << L" total) ---");
+
+    for (PaDeviceIndex i = 0; i < numDevices; ++i)
+    {
+        const PaDeviceInfo *pInfo = Pa_GetDeviceInfo(i);
+        if (!pInfo)
+        {
+            LOG(L"  " << i << L"  (null device info)");
+            continue;
+        }
+
+        const PaHostApiInfo *pHostApi = Pa_GetHostApiInfo(pInfo->hostApi);
+        StringStream ss;
+        ss << "  " << i;
+        if (i == defaultInput)  ss << " [default in]";
+        if (i == defaultOutput) ss << " [default out]";
+        ss << "  \"" << pInfo->name << "\""
+           << "  API=" << (pHostApi ? pHostApi->name : "?")
+           << "  in="  << pInfo->maxInputChannels
+           << "  out=" << pInfo->maxOutputChannels
+           << "  rate=" << pInfo->defaultSampleRate;
+        LOG(WStr(ss.str()));
+    }
+    LOG(L"---");
+
+    Pa_Terminate();
+}
+
 // ── Public interface ───────────────────────────────────────────────────────────
 
 CAudioProcessor::~CAudioProcessor()
@@ -130,7 +204,7 @@ CAudioProcessor::~CAudioProcessor()
     Shutdown();
 }
 
-bool CAudioProcessor::Initialize(uint32_t p_fftSize)
+bool CAudioProcessor::Initialize(uint32_t p_fftSize, Option<int> p_deviceId, Option<int> p_channel)
 {
     if (m_initialized)
     {
@@ -154,38 +228,111 @@ bool CAudioProcessor::Initialize(uint32_t p_fftSize)
         return false;
     }
 
-    // Open default input device, mono, float32
-    paErr = Pa_OpenDefaultStream(&m_pStream,
-                                 1,          // input channels  (mono)
-                                 0,          // output channels (none)
-                                 paFloat32,  // sample format
-                                 m_sampleRate,
-                                 paFramesPerBufferUnspecified, // let PA choose
-                                 PaCallback,
-                                 this);
-    if (paErr != paNoError)
+    // ── Store channel selection ──────────────────────────────────────────
+    m_channelIndex = p_channel.value_or(0);
+
+    // ── Open the requested device (or default if none specified) ────────
+    if (p_deviceId.has_value())
     {
-        LOG_ERROR(L"CAudioProcessor: Pa_OpenDefaultStream failed: " << WStr(Pa_GetErrorText(paErr)));
-        Pa_Terminate();
-        return false;
+        PaDeviceIndex requested = static_cast<PaDeviceIndex>(*p_deviceId);
+        const PaDeviceInfo *pReqInfo = Pa_GetDeviceInfo(requested);
+        if (!pReqInfo)
+        {
+            LOG_ERROR(L"CAudioProcessor: Device #" << *p_deviceId << L" not found.");
+            Pa_Terminate();
+            return false;
+        }
+        if (pReqInfo->maxInputChannels < 1)
+        {
+            LOG_ERROR(L"CAudioProcessor: Device #" << *p_deviceId << L" \""
+                      << WStr(pReqInfo->name) << L"\" has no input channels.");
+            Pa_Terminate();
+            return false;
+        }
+
+        // Open enough channels to reach the requested index plus one
+        m_numChannels = std::min(static_cast<int>(pReqInfo->maxInputChannels),
+                                 m_channelIndex + 1);
+
+        if (m_channelIndex >= m_numChannels)
+        {
+            LOG_ERROR(L"CAudioProcessor: Channel #" << m_channelIndex
+                      << L" out of range for device #" << requested << L" (max input channels="
+                      << pReqInfo->maxInputChannels << L").");
+            Pa_Terminate();
+            return false;
+        }
+
+        PaStreamParameters inputParams;
+        inputParams.device                    = requested;
+        inputParams.channelCount              = static_cast<int>(m_numChannels);
+        inputParams.sampleFormat              = paFloat32;
+        inputParams.suggestedLatency           = pReqInfo->defaultLowInputLatency;
+        inputParams.hostApiSpecificStreamInfo = nullptr;
+
+        paErr = Pa_OpenStream(&m_pStream,
+                              &inputParams,
+                              nullptr,           // no output
+                              m_sampleRate,
+                              paFramesPerBufferUnspecified,
+                              paNoFlag,
+                              PaCallback,
+                              this);
+        if (paErr != paNoError)
+        {
+            LOG_ERROR(L"CAudioProcessor: Failed to open device #" << requested
+                      << L" \"" << WStr(pReqInfo->name) << L"\" ("
+                      << WStr(Pa_GetErrorText(paErr)) << L").");
+            Pa_Terminate();
+            return false;
+        }
+
+        LOG(L"CAudioProcessor: Opened device #" << requested
+            << L" \"" << WStr(pReqInfo->name) << L"\""
+            << L" (" << m_numChannels << L" ch, sampling ch " << m_channelIndex << L")");
+
+        // Query actual sample rate
+        const PaStreamInfo *pInfo = Pa_GetStreamInfo(m_pStream);
+        if (pInfo)
+            m_sampleRate = static_cast<uint32_t>(pInfo->sampleRate);
+
+        LOG_VERBOSE(L"CAudioProcessor: Using input device #" << requested
+                    << L" \"" << WStr(pReqInfo->name) << L"\""
+                    << L" | channels=" << m_numChannels
+                    << L" | sampling channel=" << m_channelIndex
+                    << L" | defaultSampleRate=" << pReqInfo->defaultSampleRate << L" Hz"
+                    << L" | actualSampleRate=" << m_sampleRate << L" Hz");
     }
-
-
-    // Query actual sample rate (may differ from requested)
-    const PaStreamInfo *pInfo = Pa_GetStreamInfo(m_pStream);
-    if (pInfo)
-        m_sampleRate = static_cast<uint32_t>(pInfo->sampleRate);
-
-    // Log the default input device being used
-    PaDeviceIndex defaultInput = Pa_GetDefaultInputDevice();
-    if (defaultInput != paNoDevice)
+    else
     {
-        const PaDeviceInfo *pDevInfo = Pa_GetDeviceInfo(defaultInput);
+        m_numChannels = 1;
+
+        paErr = Pa_OpenDefaultStream(&m_pStream,
+                                     1,          // input channels  (mono)
+                                     0,          // output channels (none)
+                                     paFloat32,  // sample format
+                                     m_sampleRate,
+                                     paFramesPerBufferUnspecified,
+                                     PaCallback,
+                                     this);
+        if (paErr != paNoError)
+        {
+            LOG_ERROR(L"CAudioProcessor: Pa_OpenDefaultStream failed: " << WStr(Pa_GetErrorText(paErr)));
+            Pa_Terminate();
+            return false;
+        }
+
+        // Query actual sample rate
+        const PaStreamInfo *pInfo = Pa_GetStreamInfo(m_pStream);
+        if (pInfo)
+            m_sampleRate = static_cast<uint32_t>(pInfo->sampleRate);
+
+        PaDeviceIndex defaultDev = Pa_GetDefaultInputDevice();
+        const PaDeviceInfo *pDevInfo = Pa_GetDeviceInfo(defaultDev);
         if (pDevInfo)
         {
-            LOG_VERBOSE(L"CAudioProcessor: Using input device #" << defaultInput
+            LOG_VERBOSE(L"CAudioProcessor: Using default input device #" << defaultDev
                         << L" \"" << WStr(pDevInfo->name) << L"\""
-                        << L" | maxChannels=" << pDevInfo->maxInputChannels
                         << L" | defaultSampleRate=" << pDevInfo->defaultSampleRate << L" Hz"
                         << L" | actualSampleRate=" << m_sampleRate << L" Hz");
         }
