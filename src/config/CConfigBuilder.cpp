@@ -270,6 +270,120 @@ void MergeAudioSettings(SProgramConfig &p_cfg, const SAudioCliFlags &p_cli,
         p_cfg.m_audioChannel = p_cli.m_audioChannel;
 }
 
+/// It's a bit sloppy to manually enter the flags again, once it becomes too much
+/// of a burden we will change that
+/// @return true if all arguments are valid; false if unknown flags were detected.
+bool ValidateNoUnknownArgs(int p_argc, char *p_pArgv[])
+{
+
+    // Every recognised flag (including aliases used internally)
+    const Set<String> KNOWN_FLAGS = {
+        // General
+        "--help", "-h",
+        "--verbose",
+        "--list-audio-devices",
+        "--no-wait-for-read",
+        "--serial",
+        "--config",
+        // Audio
+        "--capture-audio",
+        "--audio-device-id",
+        "--audio-channel",
+        "--input-gain",
+        "--no-audio-smoothing",
+        "--audio-smoothing-alpha",
+        // Display
+        "--display",
+        "--color",
+        "--pulse-speed",
+        "--pulse-cubic-bezier",
+        "--video-path",
+        "--video-framerate",
+        "--video-colors",
+        "--rainbow-mode",
+        "--rainbow-speed",
+        "--transition-colors",
+        "--transition-speed",
+        "--transition-cubic-bezier",
+#ifdef USE_GLSL
+        "--shader-path",
+        "--shader-fps",
+        "--shader-scale",
+#endif
+    };
+
+    // Flags that consume at least one value argument (the next argv entry)
+    const Set<String> TAKES_VALUE = {
+        "--serial",
+        "--config",
+        "--audio-device-id",
+        "--audio-channel",
+        "--display",
+        "--color",
+        "--pulse-speed",
+        "--video-path",
+        "--video-framerate",
+        "--video-colors",
+        "--rainbow-mode",
+        "--rainbow-speed",
+        "--transition-colors",
+        "--transition-speed",
+        "--input-gain",
+        "--audio-smoothing-alpha",
+#ifdef USE_GLSL
+        "--shader-path",
+        "--shader-fps",
+        "--shader-scale",
+#endif
+    };
+
+    // Flags that consume exactly four value arguments
+    const Set<String> TAKES_4_VALUES = {
+        "--pulse-cubic-bezier",
+        "--transition-cubic-bezier",
+    };
+
+    DynamicContainer<String> unknown;
+    int i = 1;
+    while (i < p_argc)
+    {
+        String arg(p_pArgv[i]);
+
+        // Values are not flags — skip checks on them
+        if (arg.rfind("--", 0) != 0 && arg != "-h")
+        {
+            ++i;
+            continue;
+        }
+
+        if (KNOWN_FLAGS.find(arg) != KNOWN_FLAGS.end())
+        {
+            // Consume value arguments
+            if (TAKES_4_VALUES.find(arg) != TAKES_4_VALUES.end())
+                i += 5;  // flag + 4 values
+            else if (TAKES_VALUE.find(arg) != TAKES_VALUE.end())
+                i += 2;  // flag + 1 value
+            else
+                ++i;      // flag only
+        }
+        else
+        {
+            unknown.push_back(arg);
+            ++i;  // skip over unknown flag so we can list more
+        }
+    }
+
+    if (!unknown.empty())
+    {
+        LOG_ERROR(L"Unrecognised argument(s):");
+        for (const auto &u : unknown)
+            LOG_ERROR(L"  " << WStr(u));
+        LOG_ERROR(L"Use --help to see available options.");
+        return false;
+    }
+    return true;
+}
+
 } // anonymous namespace
 
 // =============================================================================
@@ -339,6 +453,14 @@ SProgramConfig CConfigBuilder::Build(int p_argc, char *p_pArgv[])
         // Merge audio settings (CLI + defaults only)
         SAudioCliFlags audioCli = ParseAudioCliFlags(p_argc, p_pArgv);
         MergeAudioSettings(cfg, audioCli, nullptr);
+    }
+
+    // ── 3. Validate that no unknown CLI arguments were passed ───────────
+    if (!ValidateNoUnknownArgs(p_argc, p_pArgv))
+    {
+        // cfg.m_pDisplay may be set — leave it up to the caller to decide
+        // whether to abort.  Returning an empty display is cleaner.
+        cfg.m_pDisplay.reset();
     }
 
     return cfg;
