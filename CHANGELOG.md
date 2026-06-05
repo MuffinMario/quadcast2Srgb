@@ -1,10 +1,22 @@
 # Changelog
 
-## [0.4.0] - 2026-06-04
+## [0.4.0] - 2026-06-05
 
 ### Added
-- GLSL displays can now react to the microphone. `u_audioVolume` is a new uniform which exposes the input device (currently: default input device) to shaders when enabling audio capture with `capture-audio`. Additional adjustments for audio capture can be found in the documentation!
-- Displays will now wait for the microphone to respond to our LED requests. New config key `no-wait-for-read` and CLI flag `--no-wait-for-read` skip this option.  By default the program will wait for the microphone controller though. Disabling it might increase the frames per second, but might create unwanted behavior; use with caution.
+- Added feature to capture audio. To enable usage requires `--capture-audio` or similar config property.
+- Added audio device selection via `--audio-device-id <n>` and config key `device-id`.
+  Run `--list-audio-devices` to show available devices with their IDs.
+- Added channel selection via `--audio-channel <n>` and config key `channel`
+  (0 = left, 1 = right). Requires `--capture-audio`.
+- Added `--input-gain <float>` / `input-gain` and `--audio-smoothing-alpha <float>` /
+  `audio-smoothing-alpha` config keys for audio capture adjustments.
+- Added `--list-audio-devices` flag to list all available PortAudio devices and exit.
+- Added default audio-reactive shader `audiosphere.glsl` to the resources.
+- Added `u_audioVolume` uniform (also `iAudioVolume`, `audioVolume`) to GLSL shader
+  display, reports current capture volume level (0–1).
+- Unknown CLI arguments now produce an error and suggest `--help`.
+- Displays now wait for the device to acknowledge LED packets by default.
+  Added `--no-wait-for-read` / `no-wait-for-read` config key to skip this wait.
 
 ## [0.3.0] - 2026-05-30
 

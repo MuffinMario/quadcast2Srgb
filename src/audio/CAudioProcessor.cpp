@@ -37,18 +37,6 @@ int CAudioProcessor::PaCallback(const void *p_pInput, void * /*p_pOutput*/,
             float *pBuf = pThis->m_pcmBuffer.data() + pThis->m_pcmWritePos;
             for (size_t j = 0; j < toCopy; ++j)
                 pBuf[j] = pSamples[j * pThis->m_numChannels + pThis->m_channelIndex];
-            for(size_t c = 0; c < pThis->m_numChannels; ++c)
-                for (size_t j = 0; j < toCopy; ++j)
-                {
-
-                    auto val = pSamples[j * pThis->m_numChannels + c];
-                    if(val != 0.0f)
-                    {
-                        
-                        LOG_VERBOSE(L"CAudioProcessor: sample[" << j << "][" << c << "] = " << val);
-                        break;
-                    }
-                }
             pSamples += toCopy * pThis->m_numChannels;
         }
         else

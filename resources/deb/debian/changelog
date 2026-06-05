@@ -1,13 +1,21 @@
 quadcast2srgb (0.4.0) unstable; urgency=medium
 
-  * GLSL displays can now react to the microphone. `u_audioVolume` is a new uniform which 
-    exposes the input device (currently: default input device) to shaders when enabling audio 
-    capture with `capture-audio`. Additional adjustments for audio capture can be found in the documentation!
-  * Color-packet response validation: after each sub-part send the program now reads the device
-    response to confirm the command was accepted.  New CLI flag `--no-wait-for-read` and config
-    key `no-wait-for-read` (boolean, default false) skip this response wait for higher throughput.
+  * Added feature to capture audio. To enable usage requires `--capture-audio` or similar config property.
+  * Added audio device selection via `--audio-device-id <n>` and config key `device-id`.
+    Run `--list-audio-devices` to show available devices with their IDs.
+  * Added channel selection via `--audio-channel <n>` and config key `channel`
+    (0 = left, 1 = right). Requires `--capture-audio`.
+  * Added `--input-gain <float>` / `input-gain` and `--audio-smoothing-alpha <float>` /
+    `audio-smoothing-alpha` config keys for audio capture adjustments.
+  * Added `--list-audio-devices` flag to list all available PortAudio devices and exit.
+  * Added default audio-reactive shader `audiosphere.glsl` to the resources.
+  * Added `u_audioVolume` uniform (also `iAudioVolume`, `audioVolume`) to GLSL shader
+    display, reports current capture volume level (0–1).
+  * Unknown CLI arguments now produce an error and suggest `--help`.
+  * Displays now wait for the device to acknowledge LED packets by default.
+    Added `--no-wait-for-read` / `no-wait-for-read` config key to skip this wait.
 
- -- Mario T <admin@muffinmar.io>  Wed, 04 Jun 2026 00:00:00 +0000
+ -- Mario T <admin@muffinmar.io>  Fri, 05 Jun 2026 00:00:00 +0000
 
 quadcast2srgb (0.3.0) unstable; urgency=medium
 

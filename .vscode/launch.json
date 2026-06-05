@@ -375,12 +375,23 @@
                 "--shader-scale","50",
                 "--capture-audio", // if we dont enable audio capturing u_audioVolume is always 0.0
                 "--audio-smoothing-alpha","0.15",
-                "--audio-device-id","12",
-                "--audio-channel","127"
+                "--audio-device-id","10", // pw
+                //"--audio-device-id","11", // pa
+                "--audio-channel","0"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
-            "environment": [],
+            "environment": [
+                {
+
+                    //"name": "PULSE_SOURCE", 
+                    //// easy check: pactl list sources | grep -E "Name:|Description"
+                    //"value": "alsa_output.usb-Turtle_Beach_Stealth_Pro_PlayStation_2002FFFF8602-01.iec958-stereo.monitor"
+                    "name": "PIPEWIRE_NODE",
+                    // easy check: wpctl status 
+                    "value": "64" 
+                }
+            ],
             "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [

@@ -195,9 +195,66 @@ qc2srgb --display glsl --shader-path ~/my_effect.glsl --shader-fps 15 --shader-s
 | `--shader-path <path>` | <none> (required) | Path to the `.glsl` fragment shader file |
 | `--shader-fps <n>` | `30` | Target frame rate. **Warning**: Any value which results in a frame delta of ~30ms or lower (> ~33 fps) may cause unwanted behavior as the microphone controller cannot work off the requests in time. WIP: Once we add a response-wait communication option instead of blindly sending packets, a frame rate above ~33 fps might not be possible at all. |
 | `--shader-scale <n>` | `1` | Supersampling scale: renders at `12·n × 9·n` pixels and block-averages down to 12×9; higher values produce smoother color gradients. Anything above 10 is not recommended due to diminishing return for increased computing cost on such a small display screen. Feel free to figure this one out to your needs though; the smaller the better.  |
+### --list-audio-devices
+List all available PortAudio audio input/output devices with their ID, name, channel counts and sample rate, then exit. Useful for finding the device ID to pass to `--audio-device-id`:
+```sh
+qc2srgb --list-audio-devices
+```
 
+### Audio capture options
+This tool also enables you to expose and capture audio devices to display in real time. Display types which support taking in audio data (currently that is: GLSL through use of uniform `u_audioVolume`). To enable exposure and processing of audio devices `--capture-audio` needs to be enabled, or the config equivalent in [Top-level keys](#top-level-keys).
+
+```sh
+# Enable audio capture using the default input device
+qc2srgb --capture-audio
+
+# Capture from a specific device (see --list-audio-devices for IDs)
+qc2srgb --capture-audio --audio-device-id 6
+
+# Analyse only the right channel of a stereo device
+qc2srgb --capture-audio --audio-device-id 6 --audio-channel 1
+
+# Boost quiet signals
+qc2srgb --capture-audio --input-gain 80.0
+
+# Disable temporal smoothing for raw per-frame FFT data
+qc2srgb --capture-audio --no-audio-smoothing
+
+# Faster response with less smoothing
+qc2srgb --capture-audio --audio-smoothing-alpha 0.35
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--capture-audio` | off | Enable audio capture (without this flag all audio options are ignored) |
+| `--audio-device-id <n>` | default input | PortAudio device index to capture from (run `--list-audio-devices` to see available devices) |
+| `--audio-channel <n>` | `0` (first) | Which input channel to analyse — `0` = left/first, `1` = right/second, etc. |
+| `--input-gain <float>` | `50.0` | Multiplier applied to all frequency bands after FFT. Higher = more sensitive to quiet sounds |
+| `--no-audio-smoothing` | off | Disable EMA smoothing; without this, smoothing is enabled by default |
+| `--audio-smoothing-alpha <float>` | `0.15` | EMA smoothing coefficient (0–1); higher = faster response, lower = smoother but laggier |
+#### Tips on usage with PulseAudio / PipeWire
+Unfortunately capturing output audio is not as trivial under linux and is heavily based on your underlying sound server. Through the use of PortAudio we are able to forward environment variables to pass the specific device we want to capture when using the related device. To set it up first check your devices:
+```
+> qc2srgb --list-audio-devices 
+...
+--- PortAudio Devices (13 total) ---
+    ...
+  10  "pipewire"  API=ALSA  in=128  out=128  rate=44100
+  11  "pulse"  API=ALSA  in=32  out=32  rate=44100
+  12 [default in] [default out]  "default"  API=ALSA  in=128  out=128  rate=44100
+```
+To use either of these servers with an arbitrary device monitor check your sound server with `pactl list sources short | grep monitor` (PulseAudio) or `wpctl status` (PipeWire).
+
+To capture the audio of the chosen device, the commands would look similar to this then:
+```
+# pipewire specific device example
+> PIPEWIRE_NODE="64" qc2srgb --capture-audio --audio-device-id 10
+# pulseaudio specific device example 
+> PULSE_SOURCE="alsa_output.<device of your choice>.monitor" qc2srgb  --capture-audio --audio-device-id 11
+```
+Unfortunately there is no easy way to implement this to work out of the box. If you are using the systemd service you need to adjust the service accordingly. Although I am open to be corrected here, as I do not have much experience with linux sound servers and their intricacies :)!
 ### --serial `serialid`
-In case you have multiple devices which you want to run this tool separately on (per-default it syncs to all devices) you can specify the serial which you can find either via verbose logging (--verbose) or by looking under the physical stand of your microphone:
+In case you have multiple devices which you want to run this tool separately on (per-default it syncs to all Quadcast 2S devices on your computer) you can specify the serial which you can find either via verbose logging (--verbose) or by looking under the physical stand of your microphone:
 ```sh
 # Only control the device with serial ABCDE123
 qc2srgb --display solid --color 290066 --serial ABCDE123
@@ -236,12 +293,27 @@ Config files are [TOML](https://toml.io) documents. They are the only way to cha
 |---|---|---|---|---|
 | `startup-display` | string | **yes** | `<empty>` | `name` of the `[[display]]` entry to start from |
 | `verbose` | bool | no | `false` | Enable verbose logging (same as `--verbose`) |
+| `no-wait-for-read` | bool | no | `false` | Skip waiting for device response (same as `--no-wait-for-read`) |
 | `allowed-serials` | array of strings | no | `[]` (all) | Restrict to these device serial numbers |
+| `capture-audio` | bool | no | `false` | Enable audio capture (required for any audio keys below to take effect) |
+| `device-id` | integer | no | default input | PortAudio device index for audio capture |
+| `channel` | integer | no | `0` | Which input channel to analyse (0 = first) |
+| `input-gain` | float | no | `50.0` | FFT band / "volume" multiplier; higher = more sensitive |
+| `audio-smoothing` | bool | no | `true` | Enable EMA smoothing of the frequency spectrum |
+| `audio-smoothing-alpha` | float | no | `0.15` | EMA coefficient (0–1, higher = faster response) |
 
 ```toml
 startup-display = "MyDisplay"
 verbose = false
 allowed-serials = ["12345678", "87654321"]
+
+# Audio capture (requires capture-audio = true)
+capture-audio = true
+device-id = 6
+channel = 0
+input-gain = 50.0
+audio-smoothing = true
+audio-smoothing-alpha = 0.15
 ```
 
 ---
@@ -430,6 +502,7 @@ The `glsl` display type renders any OpenGL ES 3.00 fragment shader to the 12×9 
 | `iTime` | `u_time`, `time` | `float` | Seconds since the display started or was last reset |
 | `iResolution` | `u_resolution`, `resolution` | `vec2` | Render target size `vec2(12, 9) * shaderScale` |
 | `iFrame` | `u_frame`, `frame` | `int` | Frame index since the display started or was last reset |
+| `iAudioVolume` | `u_audioVolume`, `audioVolume` | `float` | Current max volume level of the captured audio device (range: 0–1). Only updated when the display sequence was started with audio capture enabled (`capture-audio`). 
 
 Any uniforms that are absent from the shader are silently skipped. None are required. Just like a traditional shader, the output color is determined by writing to an outgoing `vec4` global. The RGB components of this variable determine the LED colors, while the alpha component is ignored.
 
@@ -450,6 +523,30 @@ void main()
 {
     vec2 uv = gl_FragCoord.xy / iResolution;
     fragColor = vec4(uv.x, uv.y, 0.5 + 0.5 * sin(iTime), 1.0);
+}
+```
+
+## Audio-reactive shader example
+
+When `--capture-audio` is enabled, `u_audioVolume` pulses with the microphone's volume level:
+
+```glsl
+#version 300 es
+precision highp float;
+
+uniform float iTime;
+uniform vec2  iResolution;
+uniform float u_audioVolume;
+
+out vec4 fragColor;
+
+void main()
+{
+    vec2 uv = gl_FragCoord.xy / iResolution;
+    // Brightness follows the audio volume, wash with time-based hue
+    float brightness = 0.2 + 0.8 * u_audioVolume;
+    vec3 color = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));
+    fragColor = vec4(color * brightness, 1.0);
 }
 ```
 
