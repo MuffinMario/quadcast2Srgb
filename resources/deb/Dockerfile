@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libtomlplusplus-dev \
         libegl1-mesa-dev \
         libgles2-mesa-dev \
-        libportaudio-dev \
+        portaudio19-dev \
         libfftw3-dev \
         rsync \
         dpkg-dev \
