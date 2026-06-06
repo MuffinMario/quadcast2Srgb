@@ -7,7 +7,7 @@ Currently still in early development, however it has matured enough to be able t
 
 ## Table of Contents
 - [Installation](#installation)
-- [Setting up / Preparation](#setting-up--preparation)
+- [Getting Started](#setting-up--preparation)
 - [Usage](#usage)
   - [Command](#command)
   - [Service based usage (systemctl)](#service-based-usage-systemctl)
@@ -83,42 +83,43 @@ This is for MANUAL uninstalling only! It practically only stops the service and 
 ```
 sudo cmake -P build/cmake_uninstall.cmake
 ```
-# Setting up / Preparation
-Before starting/enabling the service, I would first suggest going the following route:
+# Getting Started
+After installing, to test if it works, simply run `qc2srgb`. If you see connection success messages and your microphone(s) lighting up to a deep indigo color, you have all the signs that it works.
 
-1. Confirm the program is installed by opening a terminal and execute `qc2srgb`. This should create a solid color display on any present / incoming new microphone. If this doesn't work ensure that you have set up the udev rule `/usr/lib/udev/rules.d/99-quadcast2srgb.rules`. If this still does not work, try again using `sudo qc2srgb --verbose`; if this fails, possibly create a new issue [here](https://github.com/MuffinMario/quadcast2Srgb/issues/new) with the verbose log.
-2. Ensure that config loading also works by executing `qc2srgb --config /etc/quadcast2srgb/config.toml` (this is what the service will execute). If you manually installed the program, the config resides in `quadcast2Srgb/resources/config/config.toml` instead.
-3. Start the service via `systemctl --user start quadcast2srgb`
-4. If everything works, you can enable the service `systemctl --user enable quadcast2srgb`. If something does not work, check `systemctl --user status quadcast2srgb`.
+### Run via config
+The preferred method to running this program is by using a config, with the parameter `--config`. The default package comes pre packaged with three configurations in the same folder. To confirm you have the default configs installed at the right path, run `qc2srgb --config /etc/quadcast2srgb/config.toml`. After running this command you should see your microphone light up slowly. For the full documentation on the vast customization options please check below section [Config Syntax](#config-syntax).
+### Alternative: Run via args
+If you want to quickly play around with the display options at hand, you can also run this tool completely via cli arguments.
+E.g. `qc2srgb --display pulse --color 290066` to create a pulsing effect. For the complete options you can check run `qc2srgb -h` or look below at [CLI Arguments](#CLI-Arguments) for the complete documentation.
 
-# Usage
+### Automatically start the service at log in
+Once you are satisfied with your configation, you can easily start the service by using the systemd service that comes pre-installed with the package. Simply enable it by running `systemctl --user enable --now quadcast2srgb`.
 
-There are two options to use this tool:
-1. Direct command usage
-2. Service daemon 
+### Troubleshooting
+If you somehow see nothing change on your microphone while the device is plugged in, check the logs by running the program again with the verbose flag `qc2srgb --verbose`. If you see no device being detected, ensure that the udev rule has been successfully installed in `/usr/lib/udev/rules.d/99-quadcast2srgb.rules`. If it still does not work, even using `sudo`, please create a new issue [here](https://github.com/MuffinMario/quadcast2Srgb/issues/new) with the verbose log. Please remember that this program only works with Quadcast 2**S** as it restricts device search to the specific Vendor+Product-ID. 
 
-## Command
+# CLI Arguments
 For the full argument reference run:
 ```sh
 qc2srgb --help
 ```
 
 ### --config
-Config files are the recommended way to use this tool. The linux package installation provides a user level service that can be enabled via systemctl (See further down in this readme) to automatically set up a more complex set up. Configs are the **only** way you can chain multiple displays along in customized order and timings. The service default config resides in `/etc/quadcast2Srgb/config.toml`. More about configs can be found in the next section as well. 
+Config files are the recommended way to use this tool. Configs are the **only** way you can chain multiple displays in customized order and timings. The service default config resides in `/etc/quadcast2Srgb/config.toml`. More about configs can be found in the next section as well. 
 
 To use a config:
 ```sh
-# Load a TOML config - supports multiple sequential displays, all display types, etc.
+# Simply load the config
 qc2srgb --config ~/.config/quadcast2srgb/config.toml
 
-# Same, but log extra diagnostic output
+# You can turn on verbosity EITHER by the config or directly
 qc2srgb --config ~/.config/quadcast2srgb/config.toml --verbose
 ```
 
 ### --display solid
 Display a solid color
 ```sh
-# Deep indigo (default color)
+# Constantly display a single color
 qc2srgb --display solid --color 290066
 
 # Colors can also be specified with a # and alpha byte (will be ignored; mainly just so you can use the vscode color picker )
@@ -147,13 +148,13 @@ qc2srgb --display video --video-path ~/leds.raw --video-framerate 24
 # Greyscale source file
 qc2srgb --display video --video-path ~/leds_grey.raw --video-colors greyscale --video-framerate 30
 ```
+Currently there is no functionality to re-scale a video to 12x9 or support common video formats.
 
-To obtain a raw 12x9 video, one may be able to use ffmpeg, e.g. ```
-ffmpeg -i bad_apple.mp4 \
+To obtain a raw 12x9 video, one may be able to use ffmpeg, e.g. `ffmpeg -i bad_apple.mp4 \
         -vf "fps=30,scale=12:9:flags=neighbor:eval=frame" \
         -pix_fmt rgb24 \
         -f rawvideo \
-        badapple_12x9.raw```
+        badapple_12x9.raw`
 
 ### --display rainbow
 Displays a rainbow across all LEDs. Supports a static flat mode or several rolling animation modes:
@@ -170,7 +171,7 @@ qc2srgb --display rainbow --rainbow-mode diagonal --rainbow-speed -2.0
 Available `--rainbow-mode` values: `flat` (default), `vertical`, `horizontal`, `diagonal`.
 
 ### --display transition
-Smoothly cycles through 2 or more colors (via HSV space), with a customizable cubic Bézier easing curve applied to each segment. Colors are specified as a comma-separated list of 6-digit hex values:
+Smoothly cycles through 2 or more colors (transitioning in HSV space), with a customizable cubic Bézier easing curve applied to each segment. Colors are specified as a comma-separated list of 6-digit hex values:
 ```sh
 # Cycle red → green → blue → red ...
 qc2srgb --display transition --transition-colors ff0000,00aa00,0000ff
@@ -186,9 +187,10 @@ Renders an OpenGL ES 3.00 fragment shader to the LED grid. See the [GLSL Shaders
 # Display a shader at 30 fps
 qc2srgb --display glsl --shader-path ~/my_effect.glsl
 
-# At 15 fps with 4× supersampling (renders at 48×36, averages down to 12×9)
+# 4x supersampling (renders to a 48x36 framebuffer), 15 fps
 qc2srgb --display glsl --shader-path ~/my_effect.glsl --shader-fps 15 --shader-scale 4
 ```
+GLSL Shaders also support audio capturing! For a complete documentation check the section [GLSL Shaders](#glsl-shaders).
 
 | Argument | Default | Description |
 |---|---|---|
@@ -231,7 +233,7 @@ qc2srgb --capture-audio --audio-smoothing-alpha 0.35
 | `--audio-channel <n>` | `0` (first) | Which input channel to analyse — `0` = left/first, `1` = right/second, etc. |
 | `--input-gain <float>` | `50.0` | Multiplier applied to all frequency bands after FFT. Higher = more sensitive to quiet sounds |
 | `--no-audio-smoothing` | off | Disable EMA smoothing; without this, smoothing is enabled by default |
-| `--audio-smoothing-alpha <float>` | `0.15` | EMA smoothing coefficient (0–1); higher = faster response, lower = smoother but laggier |
+| `--audio-smoothing-alpha <float>` | `0.15` | EMA smoothing coefficient (0–1); higher = faster response, lower = smoother but may appear laggier |
 #### Tips on usage with PulseAudio / PipeWire sound server
 Unfortunately capturing specific output audio is not as trivial under linux as it is heavily based on your underlying sound server. To set it up first check your devices:
 ```
@@ -252,7 +254,7 @@ To capture the audio of the chosen device, the commands would look similar to th
 # pulseaudio specific device example 
 > PULSE_SOURCE="alsa_output.<device of your choice>.monitor" qc2srgb  --capture-audio --audio-device-id 11
 ```
-For the documentations of the envvars, please check the respective [PipeWire](https://docs.pipewire.org/page_man_pipewire-client_conf_5.html) or [PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/FAQ) links. 
+For the documentations of the envvars, please check the respective [PipeWire](https://docs.pipewire.org/page_man_pipewire-client_conf_5.html) or [PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/FAQ) links. Other servers should also be supported, though you are asked to inform yourself on those and their support in PortAudio.
 
 Unfortunately to my finding there is no easy way to implement this to work uniformly out of the box. If you are using the systemd service you need to adjust the service accordingly. Although I am open to be corrected here, as I do not have much experience with linux sound servers and their intricacies :)!
 ### --serial `serialid`
@@ -264,24 +266,6 @@ qc2srgb --display solid --color 290066 --serial ABCDE123
 # Control two specific devices at once
 qc2srgb --display pulse --serial ABCDE123 --serial XYZ99887
 ```
-## Service based usage (systemctl)
-The package installation comes with a user based service available to launch.
-You may need to first reload the daemon for it to be detected:
-`systemctl --user daemon-reload`
-
-To check the status of the service
-`systemctl --user status quadcast2srgb`
-**It is recommended to test the functionality by directly calling the program first.**
- For this, run `qc2srgb` (no arguments) which will try to find all QC2S devices and display a test color (deep indigo) on them. If you see no errors, and instead a message such as `[Handshake] Successfully connected to device, adding to communicator pipeline. Serial: <serial>`, the service should work just as well.
-
- After this seems to work, you can go ahead and start/stop/enable the service to your liking. The service will invoke a command similar to `qc2srgb --config /etc/quadcast2srgb/config.toml`. I suggest manually starting to see if it works first:
- `systemctl --user start quadcast2srgb` (I suggest manually testing it out here, first.)
- `systemctl --user stop quadcast2srgb`
- `systemctl --user enable --now quadcast2srgb` 
-
- Troubleshoot the service via:
- `journalctl --user -xeu quadcast2srgb.service --no-pager -n 50 2>&1`
-
 
 # Config Syntax
 
@@ -302,7 +286,7 @@ Config files are [TOML](https://toml.io) documents. They are the only way to cha
 | `channel` | integer | no | `0` | Which input channel to analyse (0 = first) |
 | `input-gain` | float | no | `50.0` | FFT band / "volume" multiplier; higher = more sensitive |
 | `audio-smoothing` | bool | no | `true` | Enable EMA smoothing of the frequency spectrum |
-| `audio-smoothing-alpha` | float | no | `0.15` | EMA coefficient (0–1, higher = faster response) |
+| `audio-smoothing-alpha` | float | no | `0.15` | EMA coefficient (0-1, higher = faster response) |
 
 ```toml
 startup-display = "MyDisplay"
@@ -322,9 +306,9 @@ audio-smoothing-alpha = 0.15
 
 ## `[[display]]` entries
 
-Each display is a TOML array-of-tables entry. You can define as many as you like and link them into any graph (including cycles for infinite loops).
+Each display is a TOML array-of-tables entry. You can define as many as you like and transition them into each other in form of an arbitrary graph (including cycles for infinite loops).
 
-### Keys shared by all display types
+### Common display options
 
 | Key | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -435,7 +419,7 @@ next-display       = "NextDisplay"
 | `video-framerate` | integer | no | `30` | Playback frame rate in FPS |
 | `video-colors` | string | no | `"rgb"` | Pixel format: `"rgb"` (3 bytes/pixel) or `"greyscale"` (1 byte/pixel) |
 
-The expected resolution is **12 × 9** pixels (108 LEDs). See the ffmpeg snippet in the [Video-driven LEDs](#video-driven-leds) section for how to produce a compatible file. Supports `end-condition = { type = "video-end" }` to automatically move to the next display when the file ends.
+The expected resolution is **12 × 9** pixels (108 LEDs). See the ffmpeg snippet in [--display video](#--display-video) section for how to produce a compatible file. Supports `end-condition = { type = "video-end" }` to automatically move to the next display when the video ends.
 
 ```toml
 [[display]]
@@ -528,6 +512,9 @@ void main()
 }
 ```
 
+## Pre-packaged shaders
+The installation package comes with (very) minimal shaders pre-installed. I will spare myself the list, as it might change throughout the versions, the shaders can be found in `/usr/share/quadcast2srgb/shaders`.
+
 ## Audio-reactive shader example
 
 When `--capture-audio` is enabled, `u_audioVolume` pulses with the microphone's volume level:
@@ -536,18 +523,18 @@ When `--capture-audio` is enabled, `u_audioVolume` pulses with the microphone's 
 #version 300 es
 precision highp float;
 
-uniform float iTime;
-uniform vec2  iResolution;
+uniform float u_time;
+uniform vec2  u_resolution;
 uniform float u_audioVolume;
 
 out vec4 fragColor;
 
 void main()
 {
-    vec2 uv = gl_FragCoord.xy / iResolution;
+    vec2 uv = gl_FragCoord.xy / u_resolution;
     // Brightness follows the audio volume, wash with time-based hue
     float brightness = 0.2 + 0.8 * u_audioVolume;
-    vec3 color = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));
+    vec3 color = 0.5 + 0.5 * cos(u_time + uv.xyx + vec3(0, 2, 4));
     fragColor = vec4(color * brightness, 1.0);
 }
 ```
@@ -560,7 +547,7 @@ qc2srgb --display glsl --shader-path ~/example.glsl --shader-fps 30
 # Contributing
 Contributions are very welcome! If you have any suggestions, ideas, or want to help out with the project, feel free to open an issue or a pull request.
 
-## Customize Displays
+## Example: Custom Display
 The architecture of the program is meant to be extendable; meaning that you can add your own display types relatively easy.
 
 Here is an example walkthrough of how to add a new display type that snakes a single lit LED across all 108 LEDs (12×9 grid):
@@ -623,11 +610,11 @@ public:
 ```
 After implementing the display, orient yourself around CQC2SDisplayFactory, ArgParsing.cpp and ConfigParser.cpp to add support for parsing this display from command line or config files with your desired config options.
 
-This example will also show you that the indices on LEDs are "snaking", traversing from columns to column in zig-zag manner (e.g. 0–8 goes down the first column, then 9–17 goes up the second column, etc.). See VideoProcessing.cpp for a utility function to convert between (x,y) coordinates and LED indices if you want to do display something axis oriented.
+This example will also show you that the indices on LEDs are "snaking", traversing from columns to column in zig-zag manner (e.g. 0–8 goes down the first column, then 9–17 goes up the second column, etc.; Fairly common in LED matrices due to the wiring... I believe it can also be called [Boustrophedon](https://en.wikipedia.org/wiki/Boustrophedon) Indexing). See VideoProcessing.cpp for a utility function to convert between (x,y) coordinates and LED indices if you want to do display something more axis oriented.
 
 
 # What else to implement?
-- Capture input/output devices -> response / interface for further (customizable) displays like the GLSL shader.
-- Lua(JIT) interface for customization? (including all features of the program)
+- Lua(JIT - for lower overhead) scripting for custom stateful displays?
+- Window capture? I'm just imagining playing DOOM on it to be honest...
 - Save single display configs directly to device, if possible.
     - I haven't looked into how saving to on board memory works, HyperX NGENUITY does offer the functionality.

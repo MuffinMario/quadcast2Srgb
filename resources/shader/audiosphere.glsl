@@ -1,6 +1,13 @@
 #version 300 es
 precision highp float;
 
+/**
+* Small shader script to demonstrate the audio volume functionality
+* Displays a small purple circle at the center of the frame, lighting up and 
+* expanding with increasing audio volume captured from the audio device
+* IMPORTANT: Make sure you have --capture-audio enabled!! `qc2srgb ... --capture-audio` or `capture-audio = true` in the config
+**/
+
 // Uniforms provided by the display engine
 uniform float u_time;          // seconds since display started
 uniform vec2  u_resolution;    // render resolution (for displays: 12*scale x 9*scale)
@@ -9,11 +16,6 @@ uniform float u_audioVolume;   // Max band volume [0, 1] from the audio processo
 
 out vec4 fragColor;
 
-/**
-* Small shader script to demonstrate the audio volume functionality
-* Displays a small purple circle at the center of the frame, lighting up and 
-* expanding with increasing audio volume captured from the audio device
-**/
 void main()
 {
     // Center-origin UV, normalized so the shorter axis spans [-0.5, 0.5]
