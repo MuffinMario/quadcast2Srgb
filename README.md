@@ -232,18 +232,18 @@ qc2srgb --capture-audio --audio-smoothing-alpha 0.35
 | `--input-gain <float>` | `50.0` | Multiplier applied to all frequency bands after FFT. Higher = more sensitive to quiet sounds |
 | `--no-audio-smoothing` | off | Disable EMA smoothing; without this, smoothing is enabled by default |
 | `--audio-smoothing-alpha <float>` | `0.15` | EMA smoothing coefficient (0–1); higher = faster response, lower = smoother but laggier |
-#### Tips on usage with PulseAudio / PipeWire
-Unfortunately capturing output audio is not as trivial under linux and is heavily based on your underlying sound server. Through the use of PortAudio we are able to forward environment variables to pass the specific device we want to capture when using the related device. To set it up first check your devices:
+#### Tips on usage with PulseAudio / PipeWire sound server
+Unfortunately capturing specific output audio is not as trivial under linux as it is heavily based on your underlying sound server. To set it up first check your devices:
 ```
 > qc2srgb --list-audio-devices 
 ...
 --- PortAudio Devices (13 total) ---
     ...
   10  "pipewire"  API=ALSA  in=128  out=128  rate=44100
-  11  "pulse"  API=ALSA  in=32  out=32  rate=44100
+  11  "pulse"  API=ALSA  in=32  out=32  rate=44100 <- this is just a compatibility layer when using pipewire
   12 [default in] [default out]  "default"  API=ALSA  in=128  out=128  rate=44100
 ```
-To use either of these servers with an arbitrary device monitor check your sound server with `pactl list sources short | grep monitor` (PulseAudio) or `wpctl status` (PipeWire).
+To use either of these servers with an arbitrary audio monitor check your sound server with `pactl list sources short | grep monitor` (PulseAudio) or `wpctl status` (PipeWire).
 
 To capture the audio of the chosen device, the commands would look similar to this then:
 ```
@@ -252,7 +252,9 @@ To capture the audio of the chosen device, the commands would look similar to th
 # pulseaudio specific device example 
 > PULSE_SOURCE="alsa_output.<device of your choice>.monitor" qc2srgb  --capture-audio --audio-device-id 11
 ```
-Unfortunately there is no easy way to implement this to work out of the box. If you are using the systemd service you need to adjust the service accordingly. Although I am open to be corrected here, as I do not have much experience with linux sound servers and their intricacies :)!
+For the documentations of the envvars, please check the respective [PipeWire](https://docs.pipewire.org/page_man_pipewire-client_conf_5.html) or [PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/FAQ) links. 
+
+Unfortunately to my finding there is no easy way to implement this to work uniformly out of the box. If you are using the systemd service you need to adjust the service accordingly. Although I am open to be corrected here, as I do not have much experience with linux sound servers and their intricacies :)!
 ### --serial `serialid`
 In case you have multiple devices which you want to run this tool separately on (per-default it syncs to all Quadcast 2S devices on your computer) you can specify the serial which you can find either via verbose logging (--verbose) or by looking under the physical stand of your microphone:
 ```sh
