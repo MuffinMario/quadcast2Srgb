@@ -1,7 +1,7 @@
 # Quadcast 2S RGB
 Program to fully control the 108 individual LEDS on the HyperX Quadcast 2S. Made initially, because there is no tool for this on Linux... and the LED defaults to a rolling animated rainbow. A lot less limiting in creative freedom through various supported real time display settings.
 
-Currently still in early development, but stable enough to be used casually with minimal CPU usage.
+Currently still in early development, but stable enough to be used casually with minimal CPU usage. Please if you have trouble running this program, don't fear contacting me either in the [issue tab](https://github.com/MuffinMario/quadcast2Srgb/issues) or via mail at admin@muffinmar.io :)
 
 > **Disclaimer:** This software is provided as-is, without any warranty of any kind. Use it at your own risk. The author is not responsible for any damage to your hardware, data loss, or any other issues that may arise from using this software.
 
