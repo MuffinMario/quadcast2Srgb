@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgles2-mesa-dev \
         portaudio19-dev \
         libfftw3-dev \
+        libsdl2-dev \
         rsync \
         dpkg-dev \
     && rm -rf /var/lib/apt/lists/*

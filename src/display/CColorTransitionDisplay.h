@@ -7,7 +7,7 @@
 
 #include "CQC2SDisplay.h"
 #include "ColorTypes.h"
-#include "DisplayUtils.h"
+#include "CIRenderer.h"
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -43,7 +43,7 @@ public:
         CQC2SDisplay::Reset();
     }
 
-    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    bool DisplayFrame(CIRenderer &p_renderer) override
     {
         using namespace std::chrono;
         const auto FRAME_DURATION = 50ms;
@@ -57,7 +57,7 @@ public:
                                       static_cast<double>(EASED));
                                       
         const SRGBColor COLOR      = CURRENT.ToRGB();
-        SendMonoColorFrame(p_communicator, COLOR);
+        p_renderer.RenderMonoFrame(COLOR);
 
         m_localT += m_speed;
         if (m_localT >= 1.0f)

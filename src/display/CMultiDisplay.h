@@ -83,21 +83,21 @@ public:
         return true;
     }
 
-    bool DisplayFrame(CQuadcast2SCommunicator &/*p_communicator*/) override
+    bool DisplayFrame(CIRenderer &/*p_renderer*/) override
     {
         // not used!
         return false;
     }
 
-    void Shutdown(CQuadcast2SCommunicator &p_communicator) override
+    void Shutdown(CIRenderer &p_renderer) override
     {
         for (auto &pDisplay : m_displays)
         {
-            pDisplay->Shutdown(p_communicator);
+            pDisplay->Shutdown(p_renderer);
         }
     }
 
-    void Display(CQuadcast2SCommunicator &p_communicator,
+    void Display(CIRenderer &p_renderer,
                  const AtomicBool &p_signalStopRequest,
                  FrameCallback p_frameCallback = nullptr) override
     {
@@ -108,7 +108,7 @@ public:
         {
             // run display of current display
             auto &pDisplay = m_displays[m_currentIndex];
-            pDisplay->Display(p_communicator, p_signalStopRequest, p_frameCallback);
+            pDisplay->Display(p_renderer, p_signalStopRequest, p_frameCallback);
             // get next one in line
             auto next = m_mapIndexTransitions[m_currentIndex];
             m_currentIndex = next;

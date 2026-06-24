@@ -8,7 +8,7 @@
 #ifdef USE_GLSL
 
 #include "CQC2SDisplay.h"
-#include "DisplayUtils.h"
+#include "CIRenderer.h"
 #include "../video/VideoConstants.h"
 
 #include <EGL/egl.h>
@@ -332,7 +332,7 @@ public:
 
     // To render frames, the display thread must first acquire the EGL context in Display()
     // before calling DisplayFrame().  We override the original Display() function to ensure that the acquisition happens in the display thread
-    void Display(CQuadcast2SCommunicator &p_communicator,
+    void Display(CIRenderer &p_renderer,
                  const AtomicBool        &p_signalStopRequest,
                  FrameCallback            p_frameCallback = nullptr) override
     {
@@ -341,12 +341,12 @@ public:
             LOG_ERROR(L"CGLSLDisplay: eglMakeCurrent failed in display thread");
             return;
         }
-        CQC2SDisplay::Display(p_communicator, p_signalStopRequest, std::move(p_frameCallback));
+        CQC2SDisplay::Display(p_renderer, p_signalStopRequest, std::move(p_frameCallback));
         // Release context from this thread so Shutdown() can re-acquire it for cleanup.
         eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     }
 
-    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    bool DisplayFrame(CIRenderer &p_renderer) override
     {
         const auto FRAME_START    = std::chrono::steady_clock::now();
         const auto FRAME_DURATION = std::chrono::milliseconds(1000 / m_fps);
@@ -456,7 +456,7 @@ public:
         //auto avgB = totalB / g_LED_COUNT;
         //LOG_VERBOSE(L"CGLSLDisplay: avg color: (" << avgR << ", " << avgG << ", " << avgB << ")");
 
-        SendColorFrame(p_communicator, frame.data());
+        p_renderer.RenderFrame(frame.data());
 
         // next frame prep
         ++m_frameCount;
@@ -473,7 +473,7 @@ public:
         return true;
     }
 
-    void Shutdown(CQuadcast2SCommunicator & /*p_communicator*/) override
+    void Shutdown(CIRenderer & /*p_renderer*/) override
     {
         // Re-acquire the context in the calling (main) thread for proper GL cleanup.
         if (m_eglDisplay != EGL_NO_DISPLAY && m_eglContext != EGL_NO_CONTEXT

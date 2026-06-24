@@ -60,12 +60,36 @@ if(ENABLE_CLANG_TIDY)
     )
 endif()
 
-# Generally not advisable, recommended instead is to list up every source file explicitly!
-file(GLOB_RECURSE SOURCES
-    "${CMAKE_SOURCE_DIR}/src/*.cpp"
+# Common sources: everything except Main*.cpp and the HID communicator layer. (not recommended to just wildcard, tbh. fine in our case...)
+file(GLOB_RECURSE COMMON_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/audio/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/config/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/display/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/util/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/video/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Globals.cpp"
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+# Hardware (HID) executable sources
+# Main.cpp
+set(HW_SOURCES
+    ${COMMON_SOURCES}
+    "${CMAKE_SOURCE_DIR}/src/Main.cpp"
+)
+# hid and communicator stuff, also exclusive to the hardware exec
+file(GLOB_RECURSE HW_HID_SOURCES
+    "${CMAKE_SOURCE_DIR}/src/communicator/*.cpp"
+    "${CMAKE_SOURCE_DIR}/src/hid/*.cpp"
+)
+list(APPEND HW_SOURCES ${HW_HID_SOURCES})
+
+# Preview (window) executable sources
+set(PREVIEW_SOURCES
+    ${COMMON_SOURCES}
+    "${CMAKE_SOURCE_DIR}/src/MainPreview.cpp"
+)
+
+add_executable(${PROJECT_NAME} ${HW_SOURCES})
 
 target_compile_options(${PROJECT_NAME} PRIVATE
     -Wall
@@ -95,6 +119,46 @@ if(USE_GLSL)
     target_include_directories(${PROJECT_NAME} PRIVATE ${GLESV2_INCLUDE_DIRS})
     target_compile_definitions(${PROJECT_NAME} PRIVATE USE_GLSL)
 endif()
+
+# ── Preview executable (qc2srgb-preview) ──────────────────────────────────
+find_package(SDL2 REQUIRED)
+
+add_executable(${PROJECT_NAME}-preview ${PREVIEW_SOURCES})
+
+target_compile_options(${PROJECT_NAME}-preview PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+
+    $<$<CONFIG:Debug>:-fno-omit-frame-pointer>
+    $<$<CONFIG:RelWithDebInfo>:-fno-omit-frame-pointer>
+)
+target_compile_definitions(${PROJECT_NAME}-preview PRIVATE
+    $<$<CONFIG:Debug>:DEBUG>
+)
+target_link_libraries(${PROJECT_NAME}-preview PRIVATE
+    PkgConfig::PORTAUDIO
+    PkgConfig::FFTW3
+    SDL2::SDL2
+)
+
+# Preview doesn't use the HID/communicator layer or systemd.
+# USE_GLSL is still supported for the GLSL shader display.
+
+if(USE_GLSL)
+    target_link_libraries(${PROJECT_NAME}-preview PRIVATE OpenGL::EGL ${GLESV2_LIBRARIES})
+    target_include_directories(${PROJECT_NAME}-preview PRIVATE ${GLESV2_INCLUDE_DIRS})
+    target_compile_definitions(${PROJECT_NAME}-preview PRIVATE USE_GLSL)
+endif()
+
+# Copy config to preview output directory as well
+add_custom_command(
+    TARGET ${PROJECT_NAME}-preview POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/resources/config/config.toml"
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}-preview>/config.toml"
+    COMMENT "Copying config.toml to preview output directory"
+)
 
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD

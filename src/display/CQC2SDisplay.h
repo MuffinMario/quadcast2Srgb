@@ -7,10 +7,14 @@
 
 #include "../Common.h"
 #include "../Globals.h"
-#include "../communicator/CQuadcast2SCommunicator.h"
+#include "CIRenderer.h"
 #include "../audio/AudioTypes.h"
 #include "../audio/CAudioProcessor.h"
 #include "CEndCondition.h"
+
+/// Callback invoked once per frame before DisplayFrame(); return false to abort the display loop.
+/// The renderer parameter is the same object passed to Display().
+using FrameCallback = std::function<bool(CIRenderer &)>;
 
 class CQC2SDisplay
 {
@@ -35,10 +39,10 @@ public:
     virtual void Reset() { if (m_pEndCondition) m_pEndCondition->Reset(); }
 
     // Called once per frame; return false to stop displaying
-    virtual bool DisplayFrame(CQuadcast2SCommunicator &/*p_communicator*/) = 0;
+    virtual bool DisplayFrame(CIRenderer &/*p_renderer*/) = 0;
 
     // Called once after displaying ends or is aborted
-    virtual void Shutdown(CQuadcast2SCommunicator &/*p_communicator*/) {}
+    virtual void Shutdown(CIRenderer &/*p_renderer*/) {}
 
     // ---- audio capture accessor --------------------------------------------------
     /// Set the shared audio processor.  Called once by main() before Display().
@@ -62,7 +66,7 @@ public:
     virtual String GetNextDisplay() const { return m_nextDisplay; }
     virtual void SetNextDisplay(String p_nextDisplay) { m_nextDisplay = std::move(p_nextDisplay); }
 
-    virtual void Display(CQuadcast2SCommunicator &p_communicator,
+    virtual void Display(CIRenderer &p_renderer,
                          const AtomicBool &p_signalStopRequest,
                          FrameCallback p_frameCallback = nullptr)
     {
@@ -72,11 +76,11 @@ public:
             Reset();
             do
             {
-                if (p_frameCallback && !p_frameCallback(p_communicator))
+                if (p_frameCallback && !p_frameCallback(p_renderer))
                     break;
                 if (p_signalStopRequest.load())
                     break;
-                bool displaySuccess = DisplayFrame(p_communicator);
+                bool displaySuccess = DisplayFrame(p_renderer);
                 if (!displaySuccess)
                     break;
                 m_pEndCondition->NotifyFrameDisplayed();
@@ -87,9 +91,9 @@ public:
             // no end condition, continue ad infinitum (or until it returns false)
             while (!p_signalStopRequest.load())
             {
-                if (p_frameCallback && !p_frameCallback(p_communicator))
+                if (p_frameCallback && !p_frameCallback(p_renderer))
                     break;
-                if (!DisplayFrame(p_communicator))
+                if (!DisplayFrame(p_renderer))
                     break;
             }
         }

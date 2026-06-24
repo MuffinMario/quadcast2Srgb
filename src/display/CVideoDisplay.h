@@ -6,7 +6,7 @@
 #pragma once
 
 #include "CQC2SDisplay.h"
-#include "DisplayUtils.h"
+#include "CIRenderer.h"
 #include "../video/VideoConstants.h"
 #include <thread>
 
@@ -28,7 +28,7 @@ public:
         return !m_frames.empty();
     }
 
-    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    bool DisplayFrame(CIRenderer &p_renderer) override
     {
         if (m_frames.empty())
             return false;
@@ -37,7 +37,7 @@ public:
         auto frameDuration = std::chrono::milliseconds(1000 / m_fps);
 
         const auto &frame = m_frames[m_currentFrame];
-        SendColorFrame(p_communicator, frame.data());
+        p_renderer.RenderFrame(frame.data());
         const auto ELAPSED = std::chrono::steady_clock::now() - frameStart;
 
         // advance frame, looping when end of video is reached, end condition is decided outside...

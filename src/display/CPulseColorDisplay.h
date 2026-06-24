@@ -7,7 +7,7 @@
 
 #include "CQC2SDisplay.h"
 #include "ColorTypes.h"
-#include "DisplayUtils.h"
+#include "CIRenderer.h"
 #include <chrono>
 #include <thread>
 
@@ -40,14 +40,14 @@ public:
         
         CQC2SDisplay::Reset(); 
     }
-    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    bool DisplayFrame(CIRenderer &p_renderer) override
     {
         using namespace std::chrono;
         const auto FRAME_DURATION = 50ms;
         const auto FRAME_START = steady_clock::now();
 
         SRGBColor current = ApplyBrightness(CubicBezierEval(m_bezier, m_t));
-        SendMonoColorFrame(p_communicator, current);
+        p_renderer.RenderMonoFrame(current);
 
         if (m_increasing)
         {

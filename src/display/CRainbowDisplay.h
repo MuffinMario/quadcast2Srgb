@@ -7,7 +7,7 @@
 
 #include "CQC2SDisplay.h"
 #include "ColorTypes.h"
-#include "DisplayUtils.h"
+#include "CIRenderer.h"
 #include <chrono>
 #include <thread>
 
@@ -105,7 +105,7 @@ public:
         CQC2SDisplay::Reset(); 
     }
 
-    bool DisplayFrame(CQuadcast2SCommunicator &p_communicator) override
+    bool DisplayFrame(CIRenderer &p_renderer) override
     {
         using namespace std::chrono;
         const auto FRAME_DURATION = 50ms;
@@ -114,12 +114,12 @@ public:
         if (m_mode == ERainbowMode::Flat)
         {
             const auto COLOR = m_currentColor[0].ToRGB();
-            SendMonoColorFrame(p_communicator, COLOR);
+            p_renderer.RenderMonoFrame(COLOR);
             m_currentColor[0].m_hue = std::fmod(std::fmod(m_currentColor[0].m_hue + m_rotSpeed, 360.0) + 360.0, 360.0);
         }
         else
         {
-            SendColorFrame(p_communicator, m_currentRGBColor.data());
+            p_renderer.RenderFrame(m_currentRGBColor.data());
             for (size_t i = 0; i < g_LED_COUNT; ++i)
             {
                 m_currentColor[i].m_hue = std::fmod(std::fmod(m_currentColor[i].m_hue + m_rotSpeed, 360.0) + 360.0, 360.0);

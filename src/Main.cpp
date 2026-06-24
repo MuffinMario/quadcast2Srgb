@@ -7,6 +7,7 @@
 #include "Common.h"
 #include "Globals.h"
 #include "config/CConfigBuilder.h"
+#include "display/CIRenderer.h"
 #include "hid/HIDTypes.h"
 #include "hid/CUSBDeviceFinder.h"
 #include "hid/CQuadcast2SHandshaker.h"
@@ -292,8 +293,11 @@ int main(int p_argc, char *p_pArgv[])
 
     SYSTEMD_WATCHDOG_DECL_USEC(lastWatchdogNotify,watchdogIntervalVar);
     const auto WATCHDOG_INTERVAL = SYSTEMD_WATCHDOG_INTERVAL(watchdogIntervalVar);
-    auto handleIncomingNewDevices = [&](CQuadcast2SCommunicator &p_communicator)
+    auto handleIncomingNewDevices = [&](CIRenderer &p_renderer)
     {
+        // In the hardware path the renderer is always a CQuadcast2SCommunicator.
+        auto &pCommunicator = dynamic_cast<CQuadcast2SCommunicator &>(p_renderer);
+
         SYSTEMD_NOTIFY_WATCHDOG_IF_DUE(WATCHDOG_INTERVAL, lastWatchdogNotify);
         {
             LockGuard lg(handshakeSenderMtx);
@@ -305,7 +309,7 @@ int main(int p_argc, char *p_pArgv[])
             LOG_VERBOSE(L"[Sender] New devices received from handshake thread, adding to communicator..." );
             while (!connectedHandshakeDevicesPass.empty())
             {
-                auto currentDevicePaths = p_communicator.GetOpenPaths();
+                auto currentDevicePaths = pCommunicator.GetOpenPaths();
                 // pop device from queue
                 auto device = connectedHandshakeDevicesPass.back();
                 connectedHandshakeDevicesPass.pop_back();
@@ -323,7 +327,7 @@ int main(int p_argc, char *p_pArgv[])
                     WString serial = pInfo->serial_number ? WString(pInfo->serial_number) : L"(unknown)";
                     LOG_VERBOSE(L"[Sender] Adding device " << serial << L" to communicator." );
                 }
-                p_communicator.AddDevice(device);
+                pCommunicator.AddDevice(device);
             }
         }
 
