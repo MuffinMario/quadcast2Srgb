@@ -15,3 +15,7 @@ example_videos/*
 !example_videos/stars.bin
 
 packages/*
+comment.py
+
+#wip
+CONTRIBUTING.md 

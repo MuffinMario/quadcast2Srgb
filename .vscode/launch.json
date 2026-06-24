@@ -370,9 +370,9 @@
             "args": [
                 "--verbose",
                 "--display", "glsl",
-                "--shader-path", "${workspaceFolder}/resources/shader/audiosphere.glsl",
+                "--shader-path", "${workspaceFolder}/resources/shader/dev/waves.glsl",
                 "--shader-fps", "60",
-                "--shader-scale","50",
+                "--shader-scale","5",
                 "--capture-audio", // if we dont enable audio capturing u_audioVolume is always 0.0
                 "--audio-smoothing-alpha","0.15",
                 "--audio-device-id","10", // pw

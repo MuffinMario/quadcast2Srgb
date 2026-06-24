@@ -613,8 +613,24 @@ After implementing the display, orient yourself around CQC2SDisplayFactory, ArgP
 This example will also show you that the indices on LEDs are "snaking", traversing from columns to column in zig-zag manner (e.g. 0–8 goes down the first column, then 9–17 goes up the second column, etc.; Fairly common in LED matrices due to the wiring... I believe it can also be called [Boustrophedon](https://en.wikipedia.org/wiki/Boustrophedon) Indexing). See VideoProcessing.cpp for a utility function to convert between (x,y) coordinates and LED indices if you want to do display something more axis oriented.
 
 
+# Current roadmap
+Things I'm planning on not ordered by priority:
+- GLSL Display adjustments
+    - pass bands to the shader
+    - optimize supersampling
+        - we could use use blitting to scale down, probably the easiest way, but we would lose true pixel block averaging => opengl only supports nearest-neighbor or 
+        - multi pass shader to downscale
+- display simulation for real time previews... perhaps helpful.
+- change readme to more consumer/user oriented intentions.
+    - restructure config/arg stuff and display the features instead, with example previews
+- missing community standard docs, primarily:
+    - contributing guidelines -> specifically strict AI contribution restrictions due to the risks of both potential influx and security.
+    - issue templates
+    - a small/basic CoC
+
+
 # What else to implement?
-- Lua(JIT - for lower overhead) scripting for custom stateful displays?
+- Lua(JIT - for lower overhead) or python scripting for custom stateful displays?
 - Window capture? I'm just imagining playing DOOM on it to be honest...
 - Save single display configs directly to device, if possible.
-    - I haven't looked into how saving to on board memory works, HyperX NGENUITY does offer the functionality.
+    - I haven't looked into how saving to on board memory works, HyperX NGENUITY does offer the functionality. Feel free to create an issue if you have looked into this topic!
