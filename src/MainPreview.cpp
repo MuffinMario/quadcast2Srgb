@@ -13,7 +13,6 @@
 
 #include <csignal>
 #include <iostream>
-#include <thread>
 
 int main(int p_argc, char *p_pArgv[])
 {
@@ -81,21 +80,11 @@ int main(int p_argc, char *p_pArgv[])
 
     LOG(L"[MainPreview] Starting display with window preview...");
 
-    // Run the display in a separate thread so we can poll SDL events on the main thread.
-    Thread displayThread([&]()
-    {
-        cfg.m_pDisplay->Display(windowRenderer, g_signalStopRequest);
-        g_signalStopRequest = true;
-    });
-
-    // Main thread: poll SDL events (window close, Escape key, Ctrl+C).
-    while (!g_signalStopRequest.load() && windowRenderer.PollEvents())
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 Hz event polling
-    }
-
-    g_signalStopRequest = true;
-    displayThread.join();
+    // Run the display on the main thread so SDL rendering and event polling
+    // share the same thread (SDL requires this).
+    // The FrameCallback polls SDL events between frames.
+    cfg.m_pDisplay->Display(windowRenderer, g_signalStopRequest,
+        [&](CIRenderer &) { return windowRenderer.PollEvents(); });
 
     // ── Shutdown ──────────────────────────────────────────────────────
     audioProcessor.Shutdown();

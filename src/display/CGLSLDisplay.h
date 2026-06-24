@@ -16,6 +16,37 @@
 #include <GLES3/gl3.h>
 #include <thread>
 
+/// RAII guard that saves the current EGL context on construction and restores
+/// it on destruction.  Ensures other EGL consumers (e.g. SDL) are not left
+/// without their context after we're done.
+class CEGLContextGuard
+{
+    EGLDisplay m_pDisplay = EGL_NO_DISPLAY;
+    EGLSurface m_pDraw    = EGL_NO_SURFACE;
+    EGLSurface m_pRead    = EGL_NO_SURFACE;
+    EGLContext m_pContext = EGL_NO_CONTEXT;
+
+public:
+    CEGLContextGuard()
+    {
+        m_pDisplay = eglGetCurrentDisplay();
+        m_pDraw    = eglGetCurrentSurface(EGL_DRAW);
+        m_pRead    = eglGetCurrentSurface(EGL_READ);
+        m_pContext = eglGetCurrentContext();
+    }
+
+    ~CEGLContextGuard()
+    {
+        if (m_pContext != EGL_NO_CONTEXT && m_pDisplay != EGL_NO_DISPLAY)
+            eglMakeCurrent(m_pDisplay, m_pDraw, m_pRead, m_pContext);
+        else if (m_pDisplay != EGL_NO_DISPLAY)
+            eglMakeCurrent(m_pDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    }
+
+    CEGLContextGuard(const CEGLContextGuard &) = delete;
+    CEGLContextGuard &operator=(const CEGLContextGuard &) = delete;
+};
+
 class CGLSLDisplay : public CQC2SDisplay
 {
     String   m_shaderPath;
@@ -331,18 +362,21 @@ public:
     }
 
     // To render frames, the display thread must first acquire the EGL context in Display()
-    // before calling DisplayFrame().  We override the original Display() function to ensure that the acquisition happens in the display thread
+    // before calling DisplayFrame().  We override the original Display() function to ensure that the acquisition happens in the display thread.
+    // A RAII guard saves any pre-existing EGL context (e.g. from SDL) and restores it on exit.
     void Display(CIRenderer &p_renderer,
                  const AtomicBool        &p_signalStopRequest,
                  FrameCallback            p_frameCallback = nullptr) override
     {
+        CEGLContextGuard contextGuard;
+
         if (!eglMakeCurrent(m_eglDisplay, m_eglSurface, m_eglSurface, m_eglContext))
         {
             LOG_ERROR(L"CGLSLDisplay: eglMakeCurrent failed in display thread");
             return;
         }
         CQC2SDisplay::Display(p_renderer, p_signalStopRequest, std::move(p_frameCallback));
-        // Release context from this thread so Shutdown() can re-acquire it for cleanup.
+        // Release our context; contextGuard destructor will restore the previous one.
         eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     }
 

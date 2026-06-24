@@ -19,8 +19,10 @@
 /// to an on-screen window for preview / development purposes.
 class CWindowRenderer : public CIRenderer
 {
-    static constexpr int g_LED_PIXEL_SIZE = 48;   // on-screen pixel size of each LED
-    static constexpr int g_GRID_GAP       = 4;    // gap between LED rectangles
+    // scale factor for each LED rectangle (in pixels) on window
+    // and separate gap between rectangles (in pixels) (+ wrap around edges)
+    static constexpr int g_LED_PIXEL_SIZE = 48;   
+    static constexpr int g_GRID_GAP       = 4;    
     static constexpr int g_WINDOW_W = g_VIDEO_WIDTH  * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
     static constexpr int g_WINDOW_H = g_VIDEO_HEIGHT * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
 
@@ -56,6 +58,7 @@ public:
         if (SDL_Init(SDL_INIT_VIDEO) != 0)
         {
             LOG_ERROR(L"CWindowRenderer: SDL_Init failed: " << WStr(SDL_GetError()));
+            m_running = false;
             return;
         }
 
@@ -66,6 +69,7 @@ public:
         if (!m_pWindow)
         {
             LOG_ERROR(L"CWindowRenderer: SDL_CreateWindow failed: " << WStr(SDL_GetError()));
+            m_running = false;
             return;
         }
 
@@ -74,6 +78,7 @@ public:
         if (!m_pRenderer)
         {
             LOG_ERROR(L"CWindowRenderer: SDL_CreateRenderer failed: " << WStr(SDL_GetError()));
+            m_running = false;
             return;
         }
     }
