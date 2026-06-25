@@ -70,10 +70,10 @@ public:
                          const AtomicBool &p_signalStopRequest,
                          FrameCallback p_frameCallback = nullptr)
     {
+        Reset();
         // check for end condition
         if (m_pEndCondition.get())
         {
-            Reset();
             do
             {
                 if (p_frameCallback && !p_frameCallback(p_renderer))
