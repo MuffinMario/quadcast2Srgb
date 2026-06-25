@@ -185,7 +185,10 @@ public:
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            if (event.type == SDL_QUIT)
+            if (event.type == SDL_QUIT ||
+                event.type == SDL_WINDOWEVENT
+                && event.window.event == SDL_WINDOWEVENT_CLOSE
+                && event.window.windowID == SDL_GetWindowID(m_pWindow))
             {
                 m_running = false;
                 return false;
@@ -205,6 +208,8 @@ public:
     {
         if (!m_pGLContext) return;
 
+        glViewport(0, 0, g_WINDOW_W, g_WINDOW_H);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
         SDL_GL_SwapWindow(m_pWindow);
@@ -213,6 +218,10 @@ public:
     void RenderFrame(const SRGBColor *p_pFrame) override
     {
         if (!m_pGLContext) return;
+
+        // Reset GL state the caller, like GLSLDisplay, may have left it dirty...
+        glViewport(0, 0, g_WINDOW_W, g_WINDOW_H);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glClearColor(16.f / 255.f, 16.f / 255.f, 16.f / 255.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);

@@ -83,9 +83,14 @@ int main(int p_argc, char *p_pArgv[])
     // Run the display on the main thread so SDL rendering and event polling
     // share the same thread (SDL requires this).
     // The FrameCallback polls SDL events between frames.
-    cfg.m_pDisplay->Display(windowRenderer, g_signalStopRequest,
-        [&](CIRenderer &) { return windowRenderer.PollEvents(); });
-
+    auto callback = [&](CIRenderer &)
+    {
+        auto continueDisplaying = windowRenderer.PollEvents();
+        if (!continueDisplaying)
+            g_signalStopRequest = true;
+        return continueDisplaying;
+    };
+    cfg.m_pDisplay->Display(windowRenderer, g_signalStopRequest, std::move(callback));
     // ── Shutdown ──────────────────────────────────────────────────────
     audioProcessor.Shutdown();
     cfg.m_pDisplay->Shutdown(windowRenderer);
