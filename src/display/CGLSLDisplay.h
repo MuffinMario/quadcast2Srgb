@@ -16,22 +16,22 @@
 #include <GLES3/gl3.h>
 #include <thread>
 
+#ifndef PREVIEW_WINDOW_BINARY
 /// RAII guard that saves the current EGL context on construction and restores
-/// it on destruction.  Ensures other EGL consumers (e.g. SDL) are not left
-/// without their context after we're done.
+/// it on destruction.  Only used in hardware (non-preview) builds.
 class CEGLContextGuard
 {
     EGLDisplay m_pDisplay = EGL_NO_DISPLAY;
-    EGLSurface m_pDraw    = EGL_NO_SURFACE;
-    EGLSurface m_pRead    = EGL_NO_SURFACE;
+    EGLSurface m_pDraw = EGL_NO_SURFACE;
+    EGLSurface m_pRead = EGL_NO_SURFACE;
     EGLContext m_pContext = EGL_NO_CONTEXT;
 
 public:
     CEGLContextGuard()
     {
         m_pDisplay = eglGetCurrentDisplay();
-        m_pDraw    = eglGetCurrentSurface(EGL_DRAW);
-        m_pRead    = eglGetCurrentSurface(EGL_READ);
+        m_pDraw = eglGetCurrentSurface(EGL_DRAW);
+        m_pRead = eglGetCurrentSurface(EGL_READ);
         m_pContext = eglGetCurrentContext();
     }
 
@@ -46,28 +46,31 @@ public:
     CEGLContextGuard(const CEGLContextGuard &) = delete;
     CEGLContextGuard &operator=(const CEGLContextGuard &) = delete;
 };
+#endif // !PREVIEW_WINDOW_BINARY
 
 class CGLSLDisplay : public CQC2SDisplay
 {
-    String   m_shaderPath;
+    String m_shaderPath;
     uint32_t m_fps;
     uint32_t m_resolutionScale = 1;
 
-    // EGL handles
+#ifndef PREVIEW_WINDOW_BINARY
+    // EGL handles (hardware path only)
     EGLDisplay m_eglDisplay = EGL_NO_DISPLAY;
     EGLSurface m_eglSurface = EGL_NO_SURFACE;
     EGLContext m_eglContext = EGL_NO_CONTEXT;
+#endif
 
     // GL fb/va object handles
-    GLuint m_program    = 0;
-    GLuint m_fbo        = 0;
+    GLuint m_program = 0;
+    GLuint m_fbo = 0;
     GLuint m_fboTexture = 0;
-    GLuint m_vao        = 0; // empty VAO; positions come from gl_VertexID in vertex shader
+    GLuint m_vao = 0; // empty VAO; positions come from gl_VertexID in vertex shader
 
     // Uniform locations, -1 meaning not present in shader
-    GLint m_uTime        = -1;
-    GLint m_uResolution  = -1;
-    GLint m_uFrame       = -1;
+    GLint m_uTime = -1;
+    GLint m_uResolution = -1;
+    GLint m_uFrame = -1;
     GLint m_uAudioVolume = -1;
 
     int m_frameCount = 0;
@@ -87,7 +90,8 @@ class CGLSLDisplay : public CQC2SDisplay
             glGetShaderiv(p_shader, GL_INFO_LOG_LENGTH, &len);
             DynamicContainer<GLchar> log(static_cast<size_t>(len));
             glGetShaderInfoLog(p_shader, len, nullptr, log.data());
-            LOG_ERROR(L"CGLSLDisplay: shader compile error:\n" << WStr(log.data()));
+            LOG_ERROR(L"CGLSLDisplay: shader compile error:\n"
+                      << WStr(log.data()));
         }
         return ok == GL_TRUE;
     }
@@ -96,13 +100,30 @@ class CGLSLDisplay : public CQC2SDisplay
     // Must be called while the EGL context is still current.
     void CleanupGL()
     {
-        if (m_vao)        { glDeleteVertexArrays(1, &m_vao);        m_vao        = 0; }
-        if (m_fboTexture) { glDeleteTextures(1,     &m_fboTexture); m_fboTexture = 0; }
-        if (m_fbo)        { glDeleteFramebuffers(1, &m_fbo);        m_fbo        = 0; }
-        if (m_program)    { glDeleteProgram(m_program);             m_program    = 0; }
+        if (m_vao)
+        {
+            glDeleteVertexArrays(1, &m_vao);
+            m_vao = 0;
+        }
+        if (m_fboTexture)
+        {
+            glDeleteTextures(1, &m_fboTexture);
+            m_fboTexture = 0;
+        }
+        if (m_fbo)
+        {
+            glDeleteFramebuffers(1, &m_fbo);
+            m_fbo = 0;
+        }
+        if (m_program)
+        {
+            glDeleteProgram(m_program);
+            m_program = 0;
+        }
     }
 
-    // Unbind and release all EGL resources.  Safe to call multiple times.
+    // Unbind and release all EGL resources (hardware path only).
+#ifndef PREVIEW_WINDOW_BINARY
     void CleanupEGL()
     {
         if (m_eglDisplay == EGL_NO_DISPLAY)
@@ -124,6 +145,9 @@ class CGLSLDisplay : public CQC2SDisplay
         eglTerminate(m_eglDisplay);
         m_eglDisplay = EGL_NO_DISPLAY;
     }
+#else
+    void CleanupEGL() {}  // no-op: SDL owns the GL context
+#endif
 
 public:
     CGLSLDisplay(String p_shaderPath, uint32_t p_fps, uint32_t p_resolutionScale, String p_name,
@@ -131,7 +155,8 @@ public:
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
           m_shaderPath(std::move(p_shaderPath)), m_fps(p_fps),
           m_resolutionScale(std::max(1u, p_resolutionScale))
-    {}
+    {
+    }
 
     CGLSLDisplay(const CGLSLDisplay &) = delete;
     CGLSLDisplay &operator=(const CGLSLDisplay &) = delete;
@@ -139,18 +164,23 @@ public:
     // Ensure cleanup even when Shutdown() is never called (e.g. on early abort).
     ~CGLSLDisplay() override
     {
-        if (m_eglDisplay != EGL_NO_DISPLAY && m_eglContext != EGL_NO_CONTEXT
-            && m_eglSurface != EGL_NO_SURFACE)
+#ifndef PREVIEW_WINDOW_BINARY
+        if (m_eglDisplay != EGL_NO_DISPLAY && m_eglContext != EGL_NO_CONTEXT && m_eglSurface != EGL_NO_SURFACE)
             eglMakeCurrent(m_eglDisplay, m_eglSurface, m_eglSurface, m_eglContext);
+#endif
         CleanupGL();
+#ifndef PREVIEW_WINDOW_BINARY
         CleanupEGL();
+#endif
     }
-
-    
 
     bool Initialize() override
     {
-        // EGL init display
+#ifdef PREVIEW_WINDOW_BINARY
+        // SDL already created and made current a GLES 3.0 context for us.
+        // We just need to set up our GL objects (shaders, FBO, VAO).
+#else
+        // ── Hardware path: create our own EGL context ──────────────────
         m_eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
         if (m_eglDisplay == EGL_NO_DISPLAY)
         {
@@ -172,21 +202,17 @@ public:
             return false;
         }
 
-        // EGL_OPENGL_ES3_BIT is defined in <EGL/eglext.h> for EGL < 1.5;
-        // it is available in core EGL 1.5.
         const EGLint CONFIG_ATTRIBS[] = {
-            EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
             EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-            EGL_RED_SIZE,        8,
-            EGL_GREEN_SIZE,      8,
-            EGL_BLUE_SIZE,       8,
-            EGL_NONE
-        };
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_NONE};
 
         EGLConfig pConfig{};
-        EGLint    numConfigs = 0;
-        if (!eglChooseConfig(m_eglDisplay, CONFIG_ATTRIBS, &pConfig, 1, &numConfigs)
-            || numConfigs < 1)
+        EGLint numConfigs = 0;
+        if (!eglChooseConfig(m_eglDisplay, CONFIG_ATTRIBS, &pConfig, 1, &numConfigs) || numConfigs < 1)
         {
             LOG_ERROR(L"CGLSLDisplay: no suitable EGL config found");
             CleanupEGL();
@@ -196,10 +222,9 @@ public:
         // The surface is only required to make the context current.  All actual
         // rendering targets the 12x9 FBO created below.
         const EGLint PBUFFER_ATTRIBS[] = {
-            EGL_WIDTH,  1,
+            EGL_WIDTH, 1,
             EGL_HEIGHT, 1,
-            EGL_NONE
-        };
+            EGL_NONE};
         m_eglSurface = eglCreatePbufferSurface(m_eglDisplay, pConfig, PBUFFER_ATTRIBS);
         if (m_eglSurface == EGL_NO_SURFACE)
         {
@@ -211,8 +236,7 @@ public:
         // eg 3 context creation
         const EGLint CONTEXT_ATTRIBS[] = {
             EGL_CONTEXT_CLIENT_VERSION, 3,
-            EGL_NONE
-        };
+            EGL_NONE};
         m_eglContext = eglCreateContext(m_eglDisplay, pConfig, EGL_NO_CONTEXT, CONTEXT_ATTRIBS);
         if (m_eglContext == EGL_NO_CONTEXT)
         {
@@ -228,6 +252,9 @@ public:
             CleanupEGL();
             return false;
         }
+#endif // PREVIEW_WINDOW_BINARY
+
+        // ── Common GL setup (both paths) ──────────────────────────────
 
         // Load fragment shader
         IFStream shaderFile(m_shaderPath);
@@ -259,8 +286,8 @@ public:
         const GLuint FRAG_SHADER = glCreateShader(GL_FRAGMENT_SHADER);
 
         const char *pFragSrc = FRAG_SOURCE.c_str();
-        const bool VERT_OK   = CompileShader(VERT_SHADER, pVertexSource);
-        const bool FRAG_OK   = CompileShader(FRAG_SHADER, pFragSrc);
+        const bool VERT_OK = CompileShader(VERT_SHADER, pVertexSource);
+        const bool FRAG_OK = CompileShader(FRAG_SHADER, pFragSrc);
 
         if (!VERT_OK || !FRAG_OK)
         {
@@ -289,16 +316,18 @@ public:
             glGetProgramiv(m_program, GL_INFO_LOG_LENGTH, &len);
             DynamicContainer<char> log(static_cast<size_t>(len));
             glGetProgramInfoLog(m_program, len, nullptr, log.data());
-            LOG_ERROR(L"CGLSLDisplay: shader link error:\n" << WStr(log.data()));
+            LOG_ERROR(L"CGLSLDisplay: shader link error:\n"
+                      << WStr(log.data()));
             CleanupGL();
             CleanupEGL();
             return false;
         }
-        
+
         // support not just shadertoy convention but also
         // webgl / generic u_time, u_resolution, u_frame naming
         // whichever comes first in the linked program wins
-        auto resolveUniform = [&](std::initializer_list<const char *> p_names) -> GLint {
+        auto resolveUniform = [&](std::initializer_list<const char *> p_names) -> GLint
+        {
             for (const char *pName : p_names)
             {
                 const GLint LOC = glGetUniformLocation(m_program, pName);
@@ -308,16 +337,16 @@ public:
             return -1;
         };
 
-        m_uTime        = resolveUniform({"iTime",        "u_time",        "time"});
-        m_uResolution  = resolveUniform({"iResolution",  "u_resolution",  "resolution"});
-        m_uFrame       = resolveUniform({"iFrame",       "u_frame",       "frame"});
+        m_uTime = resolveUniform({"iTime", "u_time", "time"});
+        m_uResolution = resolveUniform({"iResolution", "u_resolution", "resolution"});
+        m_uFrame = resolveUniform({"iFrame", "u_frame", "frame"});
         m_uAudioVolume = resolveUniform({"iAudioVolume", "u_audioVolume", "audioVolume"});
 
-        // Set up FBO 
+        // Set up FBO
         glGenTextures(1, &m_fboTexture);
         glBindTexture(GL_TEXTURE_2D, m_fboTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
-                     static_cast<GLsizei>(g_VIDEO_WIDTH  * m_resolutionScale),
+                     static_cast<GLsizei>(g_VIDEO_WIDTH * m_resolutionScale),
                      static_cast<GLsizei>(g_VIDEO_HEIGHT * m_resolutionScale),
                      0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -339,17 +368,17 @@ public:
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // es 3.0 requires non zero vao, even if we dont 
+        // es 3.0 requires non zero vao, even if we dont
         glGenVertexArrays(1, &m_vao);
 
         // actual display related variables
         m_frameCount = 0;
-        m_startTime  = std::chrono::steady_clock::now();
+        m_startTime = std::chrono::steady_clock::now();
 
-        // Initialize may be called from a different thread than the rendering logic in DisplayFrame (main(), to be precise)
-        // we release the display egl rendering context here, 
+#ifndef PREVIEW_WINDOW_BINARY
+        // Release the EGL context we created; GL objects persist on the context.
         eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
+#endif
         return true;
     }
 
@@ -357,32 +386,33 @@ public:
     {
         CQC2SDisplay::Reset();
         m_frameCount = 0;
-        m_startTime  = std::chrono::steady_clock::now();
+        m_startTime = std::chrono::steady_clock::now();
         // while we could transfer the context here, reset is not just called in the display thread
     }
 
-    // To render frames, the display thread must first acquire the EGL context in Display()
-    // before calling DisplayFrame().  We override the original Display() function to ensure that the acquisition happens in the display thread.
-    // A RAII guard saves any pre-existing EGL context (e.g. from SDL) and restores it on exit.
     void Display(CIRenderer &p_renderer,
-                 const AtomicBool        &p_signalStopRequest,
-                 FrameCallback            p_frameCallback = nullptr) override
+                 const AtomicBool &p_signalStopRequest,
+                 FrameCallback p_frameCallback = nullptr) override
     {
-        CEGLContextGuard contextGuard;
+#ifdef PREVIEW_WINDOW_BINARY
+        // SDL's GL context is already current; just run the base display loop.
+        CQC2SDisplay::Display(p_renderer, p_signalStopRequest, std::move(p_frameCallback));
+#else
+        CEGLContextGuard guard;
 
         if (!eglMakeCurrent(m_eglDisplay, m_eglSurface, m_eglSurface, m_eglContext))
         {
-            LOG_ERROR(L"CGLSLDisplay: eglMakeCurrent failed in display thread");
+            LOG_ERROR(L"CGLSLDisplay: eglMakeCurrent failed in Display");
             return;
         }
         CQC2SDisplay::Display(p_renderer, p_signalStopRequest, std::move(p_frameCallback));
-        // Release our context; contextGuard destructor will restore the previous one.
         eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+#endif
     }
 
     bool DisplayFrame(CIRenderer &p_renderer) override
     {
-        const auto FRAME_START    = std::chrono::steady_clock::now();
+        const auto FRAME_START = std::chrono::steady_clock::now();
         const auto FRAME_DURATION = std::chrono::milliseconds(1000 / m_fps);
 
         // update uniforms
@@ -395,7 +425,7 @@ public:
         }
         if (m_uResolution != -1)
             glUniform2f(m_uResolution,
-                        static_cast<float>(g_VIDEO_WIDTH  * m_resolutionScale),
+                        static_cast<float>(g_VIDEO_WIDTH * m_resolutionScale),
                         static_cast<float>(g_VIDEO_HEIGHT * m_resolutionScale));
         if (m_uFrame != -1)
             glUniform1i(m_uFrame, m_frameCount);
@@ -410,15 +440,15 @@ public:
         // render to our FBO
         glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
         glViewport(0, 0,
-                   static_cast<GLsizei>(g_VIDEO_WIDTH  * m_resolutionScale),
+                   static_cast<GLsizei>(g_VIDEO_WIDTH * m_resolutionScale),
                    static_cast<GLsizei>(g_VIDEO_HEIGHT * m_resolutionScale));
-                   
+
         // WIP: some issues caused the diodes to be flashing white at 60 fps
         // though I believe this is mostly because we were sending
         // frames faster than the display could handle, causing it to fail processing
 
-        //glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        //glClear(GL_COLOR_BUFFER_BIT);
+        // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        // glClear(GL_COLOR_BUFFER_BIT);
 
         glBindVertexArray(m_vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -428,9 +458,9 @@ public:
         // glReadPixels stores rows bottom-to-top (row 0 = GL bottom).  When
         // m_resolutionScale > 1, each logical LED maps to a scale² block
         // in the high-res buffer; we average that block down to one color
-        const uint32_t TOTAL_WIDTH  = g_VIDEO_WIDTH  * m_resolutionScale;
+        const uint32_t TOTAL_WIDTH = g_VIDEO_WIDTH * m_resolutionScale;
         const uint32_t TOTAL_HEIGHT = g_VIDEO_HEIGHT * m_resolutionScale;
-        const uint32_t BLOCK        = m_resolutionScale * m_resolutionScale;
+        const uint32_t BLOCK = m_resolutionScale * m_resolutionScale;
 
         DynamicContainer<uint8_t> pixels(static_cast<size_t>(TOTAL_WIDTH * TOTAL_HEIGHT * 4u));
         glReadPixels(0, 0,
@@ -452,7 +482,7 @@ public:
 
                 // GL bottom-up row base for display row (0 = top)
                 const uint32_t GL_ROW_BASE = (g_VIDEO_HEIGHT - 1u - row) * m_resolutionScale;
-                const uint32_t COL_BASE    = col * m_resolutionScale;
+                const uint32_t COL_BASE = col * m_resolutionScale;
 
                 for (uint32_t dy = 0; dy < m_resolutionScale; ++dy)
                 {
@@ -467,28 +497,27 @@ public:
 
                 // display index mapping: odd cols are top-to-bottom, even cols are bottom-to-top
                 const uint32_t PHYS_ROW = (col % 2u == 1u) ? row : (g_VIDEO_HEIGHT - 1u - row);
-                const uint32_t DST_IDX  = col * g_VIDEO_HEIGHT + PHYS_ROW;
+                const uint32_t DST_IDX = col * g_VIDEO_HEIGHT + PHYS_ROW;
 
                 frame[DST_IDX] = {
                     static_cast<uint8_t>(rSum / BLOCK),
                     static_cast<uint8_t>(gSum / BLOCK),
-                    static_cast<uint8_t>(bSum / BLOCK)
-                };
+                    static_cast<uint8_t>(bSum / BLOCK)};
             }
         }
 
         const auto ELAPSED_CALCULATION = std::chrono::steady_clock::now() - FRAME_START;
-        // WIP stuff due to high fps... calculate average color 
-        //auto totalR = 0u, totalG = 0u, totalB = 0u;
-        //for (const auto &color : frame)        {
+        // WIP stuff due to high fps... calculate average color
+        // auto totalR = 0u, totalG = 0u, totalB = 0u;
+        // for (const auto &color : frame)        {
         //    totalR += color.m_red;
         //    totalG += color.m_green;
         //    totalB += color.m_blue;
         //}
-        //auto avgR = totalR / g_LED_COUNT;
-        //auto avgG = totalG / g_LED_COUNT;
-        //auto avgB = totalB / g_LED_COUNT;
-        //LOG_VERBOSE(L"CGLSLDisplay: avg color: (" << avgR << ", " << avgG << ", " << avgB << ")");
+        // auto avgR = totalR / g_LED_COUNT;
+        // auto avgG = totalG / g_LED_COUNT;
+        // auto avgB = totalB / g_LED_COUNT;
+        // LOG_VERBOSE(L"CGLSLDisplay: avg color: (" << avgR << ", " << avgG << ", " << avgB << ")");
 
         p_renderer.RenderFrame(frame.data());
 
@@ -496,11 +525,11 @@ public:
         ++m_frameCount;
 
         const auto ELAPSED = std::chrono::steady_clock::now() - FRAME_START;
-        //LOG_VERBOSE(L"CGLSLDisplay: frame " << m_frameCount << " time: "
-        //            << std::chrono::duration_cast<std::chrono::milliseconds>(ELAPSED).count() << " ms "
-        //            << "(calc " << std::chrono::duration_cast<std::chrono::milliseconds>(ELAPSED_CALCULATION).count() << " ms)"
-        //            << " waiting " << std::chrono::duration_cast<std::chrono::milliseconds>(FRAME_DURATION - ELAPSED).count() << " ms"
-        //        );
+        // LOG_VERBOSE(L"CGLSLDisplay: frame " << m_frameCount << " time: "
+        //             << std::chrono::duration_cast<std::chrono::milliseconds>(ELAPSED).count() << " ms "
+        //             << "(calc " << std::chrono::duration_cast<std::chrono::milliseconds>(ELAPSED_CALCULATION).count() << " ms)"
+        //             << " waiting " << std::chrono::duration_cast<std::chrono::milliseconds>(FRAME_DURATION - ELAPSED).count() << " ms"
+        //         );
         if (ELAPSED < FRAME_DURATION)
             std::this_thread::sleep_for(FRAME_DURATION - ELAPSED);
 
@@ -509,12 +538,14 @@ public:
 
     void Shutdown(CIRenderer & /*p_renderer*/) override
     {
-        // Re-acquire the context in the calling (main) thread for proper GL cleanup.
-        if (m_eglDisplay != EGL_NO_DISPLAY && m_eglContext != EGL_NO_CONTEXT
-            && m_eglSurface != EGL_NO_SURFACE)
+#ifndef PREVIEW_WINDOW_BINARY
+        if (m_eglDisplay != EGL_NO_DISPLAY && m_eglContext != EGL_NO_CONTEXT && m_eglSurface != EGL_NO_SURFACE)
             eglMakeCurrent(m_eglDisplay, m_eglSurface, m_eglSurface, m_eglContext);
+#endif
         CleanupGL();
+#ifndef PREVIEW_WINDOW_BINARY
         CleanupEGL();
+#endif
     }
 };
 

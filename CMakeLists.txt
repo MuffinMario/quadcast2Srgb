@@ -135,6 +135,7 @@ target_compile_options(${PROJECT_NAME}-preview PRIVATE
 )
 target_compile_definitions(${PROJECT_NAME}-preview PRIVATE
     $<$<CONFIG:Debug>:DEBUG>
+    PREVIEW_WINDOW_BINARY
 )
 target_link_libraries(${PROJECT_NAME}-preview PRIVATE
     PkgConfig::PORTAUDIO

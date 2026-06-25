@@ -10,25 +10,34 @@
 #include "../Globals.h"
 
 #include <SDL2/SDL.h>
+#include <GLES3/gl3.h>
 #include <atomic>
 #include <chrono>
 #include <cstring>
 #include <thread>
 
-/// SDL2 window-based implementation of IRenderer.  Renders the 12×9 LED grid
-/// to an on-screen window for preview / development purposes.
+/// SDL2 window-based implementation of IRenderer.  Creates an OpenGL ES 3.0
+/// context via SDL and renders the 12×9 LED grid with raw GL.  Other GL
+/// consumers (e.g. CGLSLDisplay) can share this context without EGL conflicts.
 class CWindowRenderer : public CIRenderer
 {
     // scale factor for each LED rectangle (in pixels) on window
     // and separate gap between rectangles (in pixels) (+ wrap around edges)
-    static constexpr int g_LED_PIXEL_SIZE = 48;   
-    static constexpr int g_GRID_GAP       = 4;    
+    static constexpr int g_LED_PIXEL_SIZE = 48;
+    static constexpr int g_GRID_GAP       = 4;
     static constexpr int g_WINDOW_W = g_VIDEO_WIDTH  * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
     static constexpr int g_WINDOW_H = g_VIDEO_HEIGHT * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
 
     SDL_Window   *m_pWindow   = nullptr;
-    SDL_Renderer *m_pRenderer = nullptr;
+    SDL_GLContext m_pGLContext = nullptr;
     std::atomic<bool> m_running{true};
+
+    // ── GL resources for rectangle rendering ────────────────────────────
+    GLuint m_rectProgram = 0;
+    GLuint m_rectVAO     = 0;
+    GLuint m_rectVBO     = 0;
+    GLint  m_uColorLoc   = -1;
+    GLint  m_uOffsetLoc  = -1;
 
     /// Map a logical LED index (column-major, odd cols reversed) to its
     /// on-screen (x, y) position.
@@ -44,12 +53,73 @@ class CWindowRenderer : public CIRenderer
         p_outY = g_GRID_GAP + static_cast<int>(PHYS_ROW) * (g_LED_PIXEL_SIZE + g_GRID_GAP);
     }
 
-    /// Draw a single colored LED rectangle at the given screen position.
-    void DrawLed(int p_x, int p_y, const SRGBColor &p_color)
+    bool InitGL()
     {
-        SDL_SetRenderDrawColor(m_pRenderer, p_color.m_red, p_color.m_green, p_color.m_blue, 255);
-        SDL_Rect rect{p_x, p_y, g_LED_PIXEL_SIZE, g_LED_PIXEL_SIZE};
-        SDL_RenderFillRect(m_pRenderer, &rect);
+        // Simple shader: colored quad with pixel offset
+        const char *pVertSrc =
+            "#version 300 es\n"
+            "in vec2 aPos;\n"
+            "uniform vec2 uOffset;\n"
+            "uniform vec2 uScale;\n"
+            "void main() {\n"
+            "    vec2 pos = aPos * uScale + uOffset;\n"
+            "    gl_Position = vec4(pos, 0.0, 1.0);\n"
+            "}\n";
+
+        const char *pFragSrc =
+            "#version 300 es\n"
+            "precision mediump float;\n"
+            "uniform vec3 uColor;\n"
+            "out vec4 fragColor;\n"
+            "void main() {\n"
+            "    fragColor = vec4(uColor, 1.0);\n"
+            "}\n";
+
+        GLuint vShader = glCreateShader(GL_VERTEX_SHADER);
+        GLuint fShader = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(vShader, 1, &pVertSrc, nullptr);
+        glShaderSource(fShader, 1, &pFragSrc, nullptr);
+        glCompileShader(vShader);
+        glCompileShader(fShader);
+
+        m_rectProgram = glCreateProgram();
+        glAttachShader(m_rectProgram, vShader);
+        glAttachShader(m_rectProgram, fShader);
+        glLinkProgram(m_rectProgram);
+        glDeleteShader(vShader);
+        glDeleteShader(fShader);
+
+        m_uColorLoc  = glGetUniformLocation(m_rectProgram, "uColor");
+        m_uOffsetLoc = glGetUniformLocation(m_rectProgram, "uOffset");
+        GLint uScaleLoc = glGetUniformLocation(m_rectProgram, "uScale");
+
+        // Unit quad in NDC space (will be scaled by uScale and offset by uOffset)
+        const float QUAD[] = {0.f, 0.f,  1.f, 0.f,  0.f, 1.f,  1.f, 1.f};
+        glGenVertexArrays(1, &m_rectVAO);
+        glGenBuffers(1, &m_rectVBO);
+        glBindVertexArray(m_rectVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_rectVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD), QUAD, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+        // Set constant scale (LED pixel size in NDC)
+        glUseProgram(m_rectProgram);
+        glUniform2f(uScaleLoc,
+                    2.f * g_LED_PIXEL_SIZE / g_WINDOW_W,
+                    2.f * g_LED_PIXEL_SIZE / g_WINDOW_H);
+
+        return true;
+    }
+
+    void DrawLedGL(int p_x, int p_y, const SRGBColor &p_color)
+    {
+        // Normalize pixel offset to NDC [-1, 1]
+        float ox = -1.f + 2.f * p_x / g_WINDOW_W;
+        float oy =  1.f - 2.f * p_y / g_WINDOW_H - 2.f * g_LED_PIXEL_SIZE / g_WINDOW_H;
+        glUniform2f(m_uOffsetLoc, ox, oy);
+        glUniform3f(m_uColorLoc, p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
 
 public:
@@ -62,10 +132,14 @@ public:
             return;
         }
 
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+
         m_pWindow = SDL_CreateWindow("qc2srgb-preview",
                                      SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                      g_WINDOW_W, g_WINDOW_H,
-                                     SDL_WINDOW_SHOWN);
+                                     SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
         if (!m_pWindow)
         {
             LOG_ERROR(L"CWindowRenderer: SDL_CreateWindow failed: " << WStr(SDL_GetError()));
@@ -73,11 +147,19 @@ public:
             return;
         }
 
-        m_pRenderer = SDL_CreateRenderer(m_pWindow, -1,
-                                         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-        if (!m_pRenderer)
+        m_pGLContext = SDL_GL_CreateContext(m_pWindow);
+        if (!m_pGLContext)
         {
-            LOG_ERROR(L"CWindowRenderer: SDL_CreateRenderer failed: " << WStr(SDL_GetError()));
+            LOG_ERROR(L"CWindowRenderer: SDL_GL_CreateContext failed: " << WStr(SDL_GetError()));
+            m_running = false;
+            return;
+        }
+
+        SDL_GL_MakeCurrent(m_pWindow, m_pGLContext);
+
+        if (!InitGL())
+        {
+            LOG_ERROR(L"CWindowRenderer: GL init failed");
             m_running = false;
             return;
         }
@@ -85,18 +167,19 @@ public:
 
     ~CWindowRenderer() override
     {
-        if (m_pRenderer) SDL_DestroyRenderer(m_pRenderer);
-        if (m_pWindow)   SDL_DestroyWindow(m_pWindow);
+        if (m_rectVAO)     glDeleteVertexArrays(1, &m_rectVAO);
+        if (m_rectVBO)     glDeleteBuffers(1, &m_rectVBO);
+        if (m_rectProgram) glDeleteProgram(m_rectProgram);
+        if (m_pGLContext)  SDL_GL_DeleteContext(m_pGLContext);
+        if (m_pWindow)     SDL_DestroyWindow(m_pWindow);
         SDL_Quit();
     }
 
     CWindowRenderer(const CWindowRenderer &) = delete;
     CWindowRenderer &operator=(const CWindowRenderer &) = delete;
 
-    /// Check whether the window has been closed by the user.
     bool IsRunning() const { return m_running.load(); }
 
-    /// Poll SDL events; returns false when the window is closed.
     bool PollEvents()
     {
         SDL_Event event;
@@ -120,28 +203,29 @@ public:
 
     void RenderMonoFrame(SRGBColor p_color) override
     {
-        if (!m_pRenderer) return;
+        if (!m_pGLContext) return;
 
-        SDL_SetRenderDrawColor(m_pRenderer, p_color.m_red, p_color.m_green, p_color.m_blue, 255);
-        SDL_RenderClear(m_pRenderer);
-        SDL_RenderPresent(m_pRenderer);
+        glClearColor(p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        SDL_GL_SwapWindow(m_pWindow);
     }
 
     void RenderFrame(const SRGBColor *p_pFrame) override
     {
-        if (!m_pRenderer) return;
+        if (!m_pGLContext) return;
 
-        // Dark background
-        SDL_SetRenderDrawColor(m_pRenderer, 16, 16, 16, 255);
-        SDL_RenderClear(m_pRenderer);
+        glClearColor(16.f / 255.f, 16.f / 255.f, 16.f / 255.f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
 
+        glUseProgram(m_rectProgram);
+        glBindVertexArray(m_rectVAO);
         for (size_t i = 0; i < g_LED_COUNT; ++i)
         {
             int x, y;
             IndexToScreenPos(i, x, y);
-            DrawLed(x, y, p_pFrame[i]);
+            DrawLedGL(x, y, p_pFrame[i]);
         }
 
-        SDL_RenderPresent(m_pRenderer);
+        SDL_GL_SwapWindow(m_pWindow);
     }
 };
