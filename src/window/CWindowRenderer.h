@@ -5,12 +5,17 @@
 
 #pragma once
 
-#include "CIRenderer.h"
+#include "../display/CIRenderer.h"
 #include "../video/VideoConstants.h"
 #include "../Globals.h"
 
 #include <SDL2/SDL.h>
 #include <GLES3/gl3.h>
+
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_opengl3.h"
+
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -24,20 +29,24 @@ class CWindowRenderer : public CIRenderer
     // scale factor for each LED rectangle (in pixels) on window
     // and separate gap between rectangles (in pixels) (+ wrap around edges)
     static constexpr int g_LED_PIXEL_SIZE = 48;
-    static constexpr int g_GRID_GAP       = 4;
-    static constexpr int g_WINDOW_W = g_VIDEO_WIDTH  * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
+    static constexpr int g_GRID_GAP = 4;
+    static constexpr int g_WINDOW_W = g_VIDEO_WIDTH * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
     static constexpr int g_WINDOW_H = g_VIDEO_HEIGHT * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
 
-    SDL_Window   *m_pWindow   = nullptr;
+    SDL_Window *m_pWindow = nullptr;
     SDL_GLContext m_pGLContext = nullptr;
     std::atomic<bool> m_running{true};
 
     // ── GL resources for rectangle rendering ────────────────────────────
     GLuint m_rectProgram = 0;
-    GLuint m_rectVAO     = 0;
-    GLuint m_rectVBO     = 0;
-    GLint  m_uColorLoc   = -1;
-    GLint  m_uOffsetLoc  = -1;
+    GLuint m_rectVAO = 0;
+    GLuint m_rectVBO = 0;
+    GLint m_uColorLoc = -1;
+    GLint m_uOffsetLoc = -1;
+
+    // ── Grid FBO + texture (rendered by displays, displayed by ImGui) ──
+    GLuint m_gridFBO     = 0;
+    GLuint m_gridTexture = 0;
 
     /// Map a logical LED index (column-major, odd cols reversed) to its
     /// on-screen (x, y) position.
@@ -47,8 +56,8 @@ class CWindowRenderer : public CIRenderer
         const size_t ROW_IN_COL = p_index % g_VIDEO_HEIGHT;
         // Odd columns render top→bottom (the physical snake routing)
         const size_t PHYS_ROW = (COL % 2 == 0)
-            ? (g_VIDEO_HEIGHT - 1 - ROW_IN_COL)
-            : ROW_IN_COL;
+                                    ? (g_VIDEO_HEIGHT - 1 - ROW_IN_COL)
+                                    : ROW_IN_COL;
         p_outX = g_GRID_GAP + static_cast<int>(COL) * (g_LED_PIXEL_SIZE + g_GRID_GAP);
         p_outY = g_GRID_GAP + static_cast<int>(PHYS_ROW) * (g_LED_PIXEL_SIZE + g_GRID_GAP);
     }
@@ -89,12 +98,12 @@ class CWindowRenderer : public CIRenderer
         glDeleteShader(vShader);
         glDeleteShader(fShader);
 
-        m_uColorLoc  = glGetUniformLocation(m_rectProgram, "uColor");
+        m_uColorLoc = glGetUniformLocation(m_rectProgram, "uColor");
         m_uOffsetLoc = glGetUniformLocation(m_rectProgram, "uOffset");
         GLint uScaleLoc = glGetUniformLocation(m_rectProgram, "uScale");
 
         // Unit quad in NDC space (will be scaled by uScale and offset by uOffset)
-        const float QUAD[] = {0.f, 0.f,  1.f, 0.f,  0.f, 1.f,  1.f, 1.f};
+        const float QUAD[] = {0.f, 0.f, 1.f, 0.f, 0.f, 1.f, 1.f, 1.f};
         glGenVertexArrays(1, &m_rectVAO);
         glGenBuffers(1, &m_rectVBO);
         glBindVertexArray(m_rectVAO);
@@ -109,6 +118,21 @@ class CWindowRenderer : public CIRenderer
                     2.f * g_LED_PIXEL_SIZE / g_WINDOW_W,
                     2.f * g_LED_PIXEL_SIZE / g_WINDOW_H);
 
+        // ── Grid FBO + texture ─────────────────────────────────
+        glGenTextures(1, &m_gridTexture);
+        glBindTexture(GL_TEXTURE_2D, m_gridTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
+                     g_WINDOW_W, g_WINDOW_H,
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glGenFramebuffers(1, &m_gridFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_gridFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, m_gridTexture, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
         return true;
     }
 
@@ -116,7 +140,7 @@ class CWindowRenderer : public CIRenderer
     {
         // Normalize pixel offset to NDC [-1, 1]
         float ox = -1.f + 2.f * p_x / g_WINDOW_W;
-        float oy =  1.f - 2.f * p_y / g_WINDOW_H - 2.f * g_LED_PIXEL_SIZE / g_WINDOW_H;
+        float oy = 1.f - 2.f * p_y / g_WINDOW_H - 2.f * g_LED_PIXEL_SIZE / g_WINDOW_H;
         glUniform2f(m_uOffsetLoc, ox, oy);
         glUniform3f(m_uColorLoc, p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -163,15 +187,34 @@ public:
             m_running = false;
             return;
         }
+
+        // ── Dear ImGui init ──────────────────────────────────────
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+
+        ImGuiIO &io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        ImGui_ImplSDL2_InitForOpenGL(m_pWindow, m_pGLContext);
+        ImGui_ImplOpenGL3_Init("#version 300 es");
     }
 
     ~CWindowRenderer() override
     {
-        if (m_rectVAO)     glDeleteVertexArrays(1, &m_rectVAO);
-        if (m_rectVBO)     glDeleteBuffers(1, &m_rectVBO);
-        if (m_rectProgram) glDeleteProgram(m_rectProgram);
-        if (m_pGLContext)  SDL_GL_DeleteContext(m_pGLContext);
-        if (m_pWindow)     SDL_DestroyWindow(m_pWindow);
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplSDL2_Shutdown();
+        ImGui::DestroyContext();
+
+        if (m_rectVAO)
+            glDeleteVertexArrays(1, &m_rectVAO);
+        if (m_rectVBO)
+            glDeleteBuffers(1, &m_rectVBO);
+        if (m_rectProgram)
+            glDeleteProgram(m_rectProgram);
+        if (m_pGLContext)
+            SDL_GL_DeleteContext(m_pGLContext);
+        if (m_pWindow)
+            SDL_DestroyWindow(m_pWindow);
         SDL_Quit();
     }
 
@@ -185,10 +228,9 @@ public:
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+            ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT ||
-                event.type == SDL_WINDOWEVENT
-                && event.window.event == SDL_WINDOWEVENT_CLOSE
-                && event.window.windowID == SDL_GetWindowID(m_pWindow))
+                (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(m_pWindow)))
             {
                 m_running = false;
                 return false;
@@ -202,26 +244,48 @@ public:
         return m_running.load();
     }
 
-    // ── IRenderer interface ────────────────────────────────────────────────
+    void NewFrame()
+    {
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+    }
+
+    /// ImTextureID for ImGui::Image to display the LED grid.
+    ImTextureID GetGridTexture() const
+    {
+        return (ImTextureID)(intptr_t)m_gridTexture;
+    }
+
+    /// Present the frame: render ImGui, swap buffers.
+    void Present()
+    {
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        SDL_GL_SwapWindow(m_pWindow);
+    }
+
+    // ── IRenderer interface ────────────────────────────────────────
 
     void RenderMonoFrame(SRGBColor p_color) override
     {
-        if (!m_pGLContext) return;
+        if (!m_pGLContext)
+            return;
 
+        glBindFramebuffer(GL_FRAMEBUFFER, m_gridFBO);
         glViewport(0, 0, g_WINDOW_W, g_WINDOW_H);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
-        SDL_GL_SwapWindow(m_pWindow);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     void RenderFrame(const SRGBColor *p_pFrame) override
     {
-        if (!m_pGLContext) return;
+        if (!m_pGLContext)
+            return;
 
-        // Reset GL state the caller, like GLSLDisplay, may have left it dirty...
+        glBindFramebuffer(GL_FRAMEBUFFER, m_gridFBO);
         glViewport(0, 0, g_WINDOW_W, g_WINDOW_H);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glClearColor(16.f / 255.f, 16.f / 255.f, 16.f / 255.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -235,6 +299,6 @@ public:
             DrawLedGL(x, y, p_pFrame[i]);
         }
 
-        SDL_GL_SwapWindow(m_pWindow);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 };

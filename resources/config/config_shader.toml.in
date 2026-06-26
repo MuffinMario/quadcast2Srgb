@@ -2,7 +2,7 @@
 startup-display = "MyGLSLDisplay"
 # verbose = true
 # no-wait-for-read = true
-# capture-audio = true
+capture-audio = true
 # input-gain = 50.0
 # audio-smoothing = true
 # audio-smoothing-alpha = 0.15
@@ -13,7 +13,7 @@ startup-display = "MyGLSLDisplay"
 type         = "glsl"
 name         = "MyGLSLDisplay"
 # path to the GLSL fragment shader file (absolute, or relative to the working directory)
-shader-path  = "@QUADCAST2SRGB_SHADER_DIR@/spiral.glsl"
+shader-path  = "@QUADCAST2SRGB_SHADER_DIR@/audiosphere.glsl"
 # optional (default: 30)
 shader-fps   = 30
 # optional: resulting framebuffer resolution 120x90 (10*12 x 10*9)

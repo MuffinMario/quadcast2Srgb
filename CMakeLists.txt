@@ -56,6 +56,7 @@ if(ENABLE_CLANG_TIDY)
     find_program(CLANG_TIDY_PATH "clang-tidy" REQUIRED)
     set(CMAKE_CXX_CLANG_TIDY
         "clang-tidy"
+        -checks=readability-identifier-naming # prevent "no checks enabled"
         --warnings-as-errors=readability-identifier-naming
     )
 endif()
@@ -88,6 +89,18 @@ set(PREVIEW_SOURCES
     ${COMMON_SOURCES}
     "${CMAKE_SOURCE_DIR}/src/MainPreview.cpp"
 )
+
+# Dear ImGui — added directly per getting-started guide.
+# .clang-tidy lives in src/ so external/ files are unaffected.
+file(GLOB IMGUI_SOURCES
+    "${CMAKE_SOURCE_DIR}/external/imgui/imgui.cpp"
+    "${CMAKE_SOURCE_DIR}/external/imgui/imgui_draw.cpp"
+    "${CMAKE_SOURCE_DIR}/external/imgui/imgui_widgets.cpp"
+    "${CMAKE_SOURCE_DIR}/external/imgui/imgui_tables.cpp"
+    "${CMAKE_SOURCE_DIR}/external/imgui/backends/imgui_impl_sdl2.cpp"
+    "${CMAKE_SOURCE_DIR}/external/imgui/backends/imgui_impl_opengl3.cpp"
+)
+list(APPEND PREVIEW_SOURCES ${IMGUI_SOURCES})
 
 add_executable(${PROJECT_NAME} ${HW_SOURCES})
 
@@ -136,6 +149,7 @@ target_compile_options(${PROJECT_NAME}-preview PRIVATE
 target_compile_definitions(${PROJECT_NAME}-preview PRIVATE
     $<$<CONFIG:Debug>:DEBUG>
     PREVIEW_WINDOW_BINARY
+    IMGUI_IMPL_OPENGL_ES3
 )
 target_link_libraries(${PROJECT_NAME}-preview PRIVATE
     PkgConfig::PORTAUDIO
@@ -151,6 +165,12 @@ if(USE_GLSL)
     target_include_directories(${PROJECT_NAME}-preview PRIVATE ${GLESV2_INCLUDE_DIRS})
     target_compile_definitions(${PROJECT_NAME}-preview PRIVATE USE_GLSL)
 endif()
+
+# ImGui include paths
+target_include_directories(${PROJECT_NAME}-preview PRIVATE
+    "${CMAKE_SOURCE_DIR}/external/imgui"
+    "${CMAKE_SOURCE_DIR}/external/imgui/backends"
+)
 
 # Copy config to preview output directory as well
 add_custom_command(
