@@ -35,6 +35,9 @@ public:
         m_currentColor.fill(SHSV{0.0, 1.0, 1.0});
     }
 
+    ERainbowMode GetMode() const { return m_mode; }
+    double       GetSpeed() const { return m_rotSpeed; }
+
     void Reset() override
     {
 

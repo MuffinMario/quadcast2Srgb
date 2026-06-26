@@ -18,6 +18,8 @@ public:
     CSolidColorDisplay(SRGBColor p_color, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay = "")
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)), m_color(p_color) {}
 
+    SRGBColor GetColor() const { return m_color; }
+
     bool DisplayFrame(CIRenderer &p_renderer) override
     {
         using namespace std::chrono;

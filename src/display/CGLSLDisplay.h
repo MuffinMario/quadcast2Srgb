@@ -158,6 +158,10 @@ public:
     {
     }
 
+    const String &GetShaderPath() const { return m_shaderPath; }
+    uint32_t      GetFPS()        const { return m_fps; }
+    uint32_t      GetScale()      const { return m_resolutionScale; }
+
     CGLSLDisplay(const CGLSLDisplay &) = delete;
     CGLSLDisplay &operator=(const CGLSLDisplay &) = delete;
 

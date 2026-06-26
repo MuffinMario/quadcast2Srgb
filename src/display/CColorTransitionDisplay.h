@@ -36,6 +36,10 @@ public:
           m_colors(std::move(p_colors)), m_speed(p_speed), m_bezier(p_bezier)
     {}
 
+    const DynamicContainer<SHSV> &GetColors() const { return m_colors; }
+    float                         GetSpeed()  const { return m_speed; }
+    SCubicBezier                  GetBezier() const { return m_bezier; }
+
     void Reset() override
     {
         m_segmentIdx = 0;

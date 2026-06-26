@@ -33,6 +33,10 @@ public:
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
           m_baseColor(p_color), m_speed(p_speed), m_bezier(p_bezier) {}
 
+    SRGBColor     GetColor() const { return m_baseColor; }
+    float         GetSpeed() const { return m_speed; }
+    SCubicBezier  GetBezier() const { return m_bezier; }
+
     void Reset() override
     {
         m_t = 0.0f;

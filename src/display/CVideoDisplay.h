@@ -22,6 +22,9 @@ public:
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
           m_frames(std::move(p_frames)), m_fps(p_fps) {}
 
+    uint32_t GetFPS()       const { return m_fps; }
+    size_t   GetFrameCount() const { return m_frames.size(); }
+
     bool Initialize() override
     {
         m_currentFrame = 0;
