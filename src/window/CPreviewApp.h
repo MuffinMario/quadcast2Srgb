@@ -19,6 +19,7 @@
 #include "../display/CMultiDisplay.h"
 #include "../display/ColorTypes.h"
 #include "imgui.h"
+#include <cstdio>
 
 /// Manages the preview window, display loop, and ImGui UI.
 /// Run() blocks until the window is closed or the display ends.
@@ -26,7 +27,8 @@ class CPreviewApp
 {
     CWindowRenderer m_renderer;
     CAudioProcessor m_audioProcessor;
-    SProgramConfig  m_config;
+    SProgramConfig m_config;
+    DynamicContainer<char> m_cmdBuffer;
 
 public:
     CPreviewApp(SProgramConfig p_config)
@@ -98,10 +100,18 @@ public:
             const char *pModeName = "?";
             switch (pRainbow->GetMode())
             {
-            case ERainbowMode::Flat:            pModeName = "flat";       break;
-            case ERainbowMode::RollingVertical:  pModeName = "vertical";  break;
-            case ERainbowMode::RollingHorizontal:pModeName = "horizontal";break;
-            case ERainbowMode::RollingDiagonal:  pModeName = "diagonal";  break;
+            case ERainbowMode::Flat:
+                pModeName = "flat";
+                break;
+            case ERainbowMode::RollingVertical:
+                pModeName = "vertical";
+                break;
+            case ERainbowMode::RollingHorizontal:
+                pModeName = "horizontal";
+                break;
+            case ERainbowMode::RollingDiagonal:
+                pModeName = "diagonal";
+                break;
             }
             ImGui::Text("Mode: %s", pModeName);
         }
@@ -152,7 +162,8 @@ public:
                 if (open)
                 {
                     ImGui::Text("Next: %s", pChild->GetNextDisplay().empty()
-                        ? "(stop)" : pChild->GetNextDisplay().c_str());
+                                                ? "(stop)"
+                                                : pChild->GetNextDisplay().c_str());
                     ShowDisplayOptions(pChild);
                     ImGui::TreePop();
                 }
@@ -167,6 +178,99 @@ public:
             ImGui::Separator();
             ShowDisplayOptions(p_pDisplay);
         }
+    }
+
+    String BuildCommandLine() const
+    {
+        StringStream ss;
+        ss << "qc2srgb";
+
+        if (m_config.m_verbose)
+            ss << " --verbose";
+        if (m_config.m_noWaitForRead)
+            ss << " --no-wait-for-read";
+        if (m_config.m_allowedSerials.has_value())
+            for (const auto &s : *m_config.m_allowedSerials)
+                ss << " --serial " << String(s.begin(), s.end());
+
+        if (m_config.m_enableAudio)
+        {
+            ss << " --capture-audio";
+            ss << " --input-gain " << m_config.m_inputGain;
+            if (!m_config.m_audioSmoothing)
+                ss << " --no-audio-smoothing";
+            ss << " --audio-smoothing-alpha " << m_config.m_audioSmoothingAlpha;
+            if (m_config.m_audioDeviceId.has_value())
+                ss << " --audio-device-id " << *m_config.m_audioDeviceId;
+            if (m_config.m_audioChannel.has_value())
+                ss << " --audio-channel " << *m_config.m_audioChannel;
+        }
+
+        ss << BuildDisplayArgs(m_config.m_pDisplay.get());
+        return ss.str();
+    }
+
+    String BuildDisplayArgs(CQC2SDisplay *p_pDisplay) const
+    {
+        if (!p_pDisplay || dynamic_cast<CMultiDisplay *>(p_pDisplay))
+            return "";
+
+        StringStream ss;
+
+        if (auto pSolid = dynamic_cast<CSolidColorDisplay *>(p_pDisplay))
+            ss << " --display solid --color " << ColorToHex(pSolid->GetColor());
+        else if (auto pPulse = dynamic_cast<CPulseColorDisplay *>(p_pDisplay))
+            ss << " --display pulse --color " << ColorToHex(pPulse->GetColor())
+               << " --pulse-speed " << pPulse->GetSpeed();
+        else if (auto pRainbow = dynamic_cast<CRainbowDisplay *>(p_pDisplay))
+        {
+            const char *pMode = "flat";
+            switch (pRainbow->GetMode())
+            {
+            case ERainbowMode::RollingVertical:
+                pMode = "vertical";
+                break;
+            case ERainbowMode::RollingHorizontal:
+                pMode = "horizontal";
+                break;
+            case ERainbowMode::RollingDiagonal:
+                pMode = "diagonal";
+                break;
+            default:
+                break;
+            }
+            ss << " --display rainbow --rainbow-mode " << pMode
+               << " --rainbow-speed " << pRainbow->GetSpeed();
+        }
+        else if (auto pTransition = dynamic_cast<CColorTransitionDisplay *>(p_pDisplay))
+        {
+            ss << " --display transition --transition-colors ";
+            const auto &colors = pTransition->GetColors();
+            for (size_t i = 0; i < colors.size(); ++i)
+            {
+                if (i)
+                    ss << ",";
+                ss << ColorToHex(colors[i].ToRGB());
+            }
+            ss << " --transition-speed " << pTransition->GetSpeed();
+        }
+        else if (auto pVideo = dynamic_cast<CVideoDisplay *>(p_pDisplay))
+            ss << " --display video --video-framerate " << pVideo->GetFPS();
+#ifdef USE_GLSL
+        else if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(p_pDisplay))
+            ss << " --display glsl --shader-path " << pGLSL->GetShaderPath()
+               << " --shader-fps " << pGLSL->GetFPS()
+               << " --shader-scale " << pGLSL->GetScale();
+#endif
+        return ss.str();
+    }
+
+    static String ColorToHex(SRGBColor p_color)
+    {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%02X%02X%02X",
+                 p_color.m_red, p_color.m_green, p_color.m_blue);
+        return buf;
     }
 
     void Run()
@@ -198,6 +302,41 @@ public:
             }
             ImGui::End();
 
+            ImGui::Begin("Command Line");
+            bool isMulti = dynamic_cast<CMultiDisplay *>(m_config.m_pDisplay.get()) != nullptr;
+            if (isMulti)
+            {
+                // if its multi dont display anything meaningful
+                String cmd = "---";
+                m_cmdBuffer.assign(cmd.begin(), cmd.end());
+                m_cmdBuffer.push_back('\0');
+            }
+            else
+            {
+                String cmd = BuildCommandLine();
+                m_cmdBuffer.assign(cmd.begin(), cmd.end());
+                m_cmdBuffer.push_back('\0');
+            }
+
+
+            // stretch input text field to grow with window size, subtract its size by round about the button on the same row 
+            const float BUTTON_W = ImGui::CalcTextSize("Copy").x + ImGui::GetStyle().FramePadding.x * 2;
+            const float GOAL_INPUT_WIDTH = ImGui::GetContentRegionAvail().x - BUTTON_W - ImGui::GetStyle().ItemSpacing.x;
+            ImGui::SetNextItemWidth(GOAL_INPUT_WIDTH);
+            ImGui::InputText("##cmd", m_cmdBuffer.data(), m_cmdBuffer.size(),
+                             ImGuiInputTextFlags_ReadOnly);
+
+            // copy button, disable if multi display
+            ImGui::SameLine();
+            if(isMulti)
+                ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+            if (ImGui::Button("Copy"))
+            {
+                String cmd(m_cmdBuffer.begin(),m_cmdBuffer.end());
+                ImGui::SetClipboardText(cmd.c_str());
+            }
+            ImGui::End();
+
             ImGui::Begin("General");
             ImGui::Text("Verbose logging: %s", m_config.m_verbose ? "Yes" : "No");
             ImGui::Text("Skip device response: %s", m_config.m_noWaitForRead ? "Yes" : "No");
@@ -221,9 +360,11 @@ public:
             ImGui::Text("Smoothing alpha: %.3f", m_config.m_audioSmoothingAlpha);
             ImGui::Text("Input gain: %.1f", m_config.m_inputGain);
             ImGui::Text("Device ID: %s", m_config.m_audioDeviceId.has_value()
-                ? std::to_string(*m_config.m_audioDeviceId).c_str() : "default");
+                                             ? std::to_string(*m_config.m_audioDeviceId).c_str()
+                                             : "default");
             ImGui::Text("Channel: %s", m_config.m_audioChannel.has_value()
-                ? std::to_string(*m_config.m_audioChannel).c_str() : "0");
+                                           ? std::to_string(*m_config.m_audioChannel).c_str()
+                                           : "0");
             ImGui::End();
 
             auto continueDisplaying = m_renderer.PollEvents();

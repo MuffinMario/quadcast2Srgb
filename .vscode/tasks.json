@@ -21,7 +21,7 @@
             "command": "cmake --build build",
             "group": "build",
             "dependsOn": "CMake Configure",
-            "problemMatcher": []
+            "problemMatcher": ["$gcc"]
         },
         {
             "label": "CMake Build (systemd)",
@@ -29,7 +29,7 @@
             "command": "cmake --build build",
             "group": "build",
             "dependsOn": "CMake Configure (systemd)",
-            "problemMatcher": []
+            "problemMatcher": ["$gcc"]
         },
         {
             "label": "CMake Configure (profiling)",
@@ -44,7 +44,7 @@
             "command": "cmake --build build-profiling",
             "group": "build",
             "dependsOn": "CMake Configure (profiling)",
-            "problemMatcher": []
+            "problemMatcher": ["$gcc"]
         }
     ]
 }
