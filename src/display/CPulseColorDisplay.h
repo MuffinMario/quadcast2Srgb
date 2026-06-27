@@ -34,8 +34,11 @@ public:
           m_baseColor(p_color), m_speed(p_speed), m_bezier(p_bezier) {}
 
     SRGBColor     GetColor() const { return m_baseColor; }
+    void          SetColor(SRGBColor p_color) { m_baseColor = p_color; }
     float         GetSpeed() const { return m_speed; }
+    void          SetSpeed(float p_speed) { m_speed = p_speed; }
     SCubicBezier  GetBezier() const { return m_bezier; }
+    void          SetBezier(const SCubicBezier &p_bezier) { m_bezier = p_bezier; }
 
     void Reset() override
     {

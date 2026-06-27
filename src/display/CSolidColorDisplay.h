@@ -19,6 +19,7 @@ public:
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)), m_color(p_color) {}
 
     SRGBColor GetColor() const { return m_color; }
+    void      SetColor(SRGBColor p_color) { m_color = p_color; }
 
     bool DisplayFrame(CIRenderer &p_renderer) override
     {

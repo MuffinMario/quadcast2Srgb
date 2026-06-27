@@ -79,19 +79,40 @@ public:
                     p_bezier.m_p2x, p_bezier.m_p2y);
     }
 
+    static bool ShowColorPicker(const char *p_pLabel, SRGBColor &p_color)
+    {
+        float col[3] = { p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f };
+        if (ImGui::ColorEdit3(p_pLabel, col))
+        {
+            p_color = { static_cast<uint8_t>(col[0] * 255.f),
+                        static_cast<uint8_t>(col[1] * 255.f),
+                        static_cast<uint8_t>(col[2] * 255.f) };
+            return true;
+        }
+        return false;
+    }
+
     void ShowDisplayOptions(CQC2SDisplay *p_pDisplay)
     {
         if (auto pSolid = dynamic_cast<CSolidColorDisplay *>(p_pDisplay))
         {
             ImGui::Text("Type: solid");
-            ShowColor("Color", pSolid->GetColor());
+            SRGBColor color = pSolid->GetColor();
+            if (ShowColorPicker("Color", color))
+                pSolid->SetColor(color);
         }
         else if (auto pPulse = dynamic_cast<CPulseColorDisplay *>(p_pDisplay))
         {
             ImGui::Text("Type: pulse");
-            ShowColor("Color", pPulse->GetColor());
-            ImGui::Text("Speed: %.3f", pPulse->GetSpeed());
-            ShowBezier("Bezier", pPulse->GetBezier());
+            SRGBColor color = pPulse->GetColor();
+            if (ShowColorPicker("Color", color))
+                pPulse->SetColor(color);
+            float speed = pPulse->GetSpeed();
+            ImGui::SliderFloat("Speed", &speed, 0.001f, 0.5f, "%.4f");
+            pPulse->SetSpeed(speed);
+            ImGui::Text("Bezier: (%.2f, %.2f) -> (%.2f, %.2f)",
+                        pPulse->GetBezier().m_p1x, pPulse->GetBezier().m_p1y,
+                        pPulse->GetBezier().m_p2x, pPulse->GetBezier().m_p2y);
         }
         else if (auto pRainbow = dynamic_cast<CRainbowDisplay *>(p_pDisplay))
         {
