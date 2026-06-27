@@ -92,6 +92,94 @@ public:
         return false;
     }
 
+    static void ShowBezierEditor(const char *p_pLabel, SCubicBezier &p_bezier)
+    {
+        ImGui::SameLine();
+        if (ImGui::Button("Modify"))
+            ImGui::OpenPopup(p_pLabel);
+
+        if (ImGui::BeginPopupModal(p_pLabel, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            const float SIZE = 200.f;
+            const float DOT_RADIUS = 6.f;
+            const ImVec2 ORIGIN = ImGui::GetCursorScreenPos();
+
+            // Reserve graph space first so drag overlays don't affect layout.
+            ImGui::Dummy(ImVec2(SIZE+DOT_RADIUS, SIZE)); // dot radius needs to be added since it may go out of the graph, y does not need it
+
+            ImDrawList *pDraw = ImGui::GetWindowDrawList();
+
+            // Background
+            pDraw->AddRectFilled(ORIGIN, ImVec2(ORIGIN.x + SIZE, ORIGIN.y + SIZE), IM_COL32(32, 32, 32, 255));
+            pDraw->AddRect(ORIGIN, ImVec2(ORIGIN.x + SIZE, ORIGIN.y + SIZE), IM_COL32(128, 128, 128, 255));
+
+            // Grid
+            for (int i = 0; i <= 10; ++i)
+            {
+                float f = i / 10.f;
+                pDraw->AddLine(ImVec2(ORIGIN.x + f * SIZE, ORIGIN.y), ImVec2(ORIGIN.x + f * SIZE, ORIGIN.y + SIZE), IM_COL32(64, 64, 64, 255));
+                pDraw->AddLine(ImVec2(ORIGIN.x, ORIGIN.y + f * SIZE), ImVec2(ORIGIN.x + SIZE, ORIGIN.y + f * SIZE), IM_COL32(64, 64, 64, 255));
+            }
+
+            // Point helpers
+            auto scr = [&](float p_x, float p_y) { return ImVec2(ORIGIN.x + p_x * SIZE, ORIGIN.y + (1.f - p_y) * SIZE); };
+            auto drawPt = [&](ImVec2 p_pt, ImU32 p_col) { pDraw->AddCircleFilled(p_pt, DOT_RADIUS-1.f, p_col); pDraw->AddCircle(p_pt, DOT_RADIUS, IM_COL32_WHITE); };
+
+            // Fixed endpoints
+            drawPt(scr(0.f, 0.f), IM_COL32(255, 0, 0, 255));
+            drawPt(scr(1.f, 1.f), IM_COL32(255, 0, 0, 255));
+
+            // Draggable control points — overlay invisible buttons on the reserved area.
+            // Save/restore cursor so the dots don't affect subsequent widget placement.
+            ImVec2 p1 = scr(p_bezier.m_p1x, p_bezier.m_p1y);
+            ImVec2 p2 = scr(p_bezier.m_p2x, p_bezier.m_p2y);
+            ImVec2 cursorSave = ImGui::GetCursorPos();
+
+            auto drag = [&](ImVec2 &p_pt, float &p_outX, float &p_outY, const char *p_pId)
+            {
+                ImGui::PushID(p_pId);
+                ImGui::SetCursorScreenPos(ImVec2(p_pt.x - 8, p_pt.y - 8));
+                ImGui::InvisibleButton("##drag", ImVec2(16, 16));
+                if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                {
+                    p_pt.x += ImGui::GetIO().MouseDelta.x;
+                    p_pt.y += ImGui::GetIO().MouseDelta.y;
+                    p_outX = std::clamp((p_pt.x - ORIGIN.x) / SIZE, 0.f, 1.f);
+                    p_outY = std::clamp(1.f - (p_pt.y - ORIGIN.y) / SIZE, 0.f, 1.f);
+                    p_pt = scr(p_outX, p_outY); // snap to clamped position
+                }
+                ImGui::PopID();
+            };
+
+            drag(p1, p_bezier.m_p1x, p_bezier.m_p1y, "p1");
+            drag(p2, p_bezier.m_p2x, p_bezier.m_p2y, "p2");
+
+            ImGui::SetCursorPos(cursorSave);
+
+            // ── Draw everything after input (consistent positions) ──
+            drawPt(p1, IM_COL32(0, 255, 0, 255));
+            drawPt(p2, IM_COL32(0, 128, 255, 255));
+            pDraw->AddLine(scr(0.f, 0.f), p1, IM_COL32(0, 255, 0, 128));
+            pDraw->AddLine(scr(1.f, 1.f), p2, IM_COL32(0, 128, 255, 128));
+
+            // Bezier curve (sampled)
+            for (int i = 0; i < 50; ++i)
+            {
+                float t0 = i / 50.f, t1 = (i + 1) / 50.f;
+                float bx0 = CubicBezierEval(p_bezier, t0);
+                float bx1 = CubicBezierEval(p_bezier, t1);
+                float by0 = t0, by1 = t1;
+                ImVec2 a = scr(bx0, by0), b = scr(bx1, by1);
+                pDraw->AddLine(a, b, IM_COL32(255, 255, 0, 255), 2.f);
+            }
+
+            ImGui::Spacing();
+            if (ImGui::Button("Close"))
+                ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+    }
+
     void ShowDisplayOptions(CQC2SDisplay *p_pDisplay)
     {
         if (auto pSolid = dynamic_cast<CSolidColorDisplay *>(p_pDisplay))
@@ -110,9 +198,12 @@ public:
             float speed = pPulse->GetSpeed();
             ImGui::SliderFloat("Speed", &speed, 0.001f, 0.5f, "%.4f");
             pPulse->SetSpeed(speed);
+            SCubicBezier bezier = pPulse->GetBezier();
             ImGui::Text("Bezier: (%.2f, %.2f) -> (%.2f, %.2f)",
-                        pPulse->GetBezier().m_p1x, pPulse->GetBezier().m_p1y,
-                        pPulse->GetBezier().m_p2x, pPulse->GetBezier().m_p2y);
+                        bezier.m_p1x, bezier.m_p1y,
+                        bezier.m_p2x, bezier.m_p2y);
+            ShowBezierEditor("Pulse Bezier", bezier);
+            pPulse->SetBezier(bezier);
         }
         else if (auto pRainbow = dynamic_cast<CRainbowDisplay *>(p_pDisplay))
         {
