@@ -77,16 +77,8 @@ public:
                     p_bezier.m_p2x, p_bezier.m_p2y);
     }
 
-    void ShowDisplayInfo(CQC2SDisplay *p_pDisplay)
+    void ShowDisplayOptions(CQC2SDisplay *p_pDisplay)
     {
-        if (!p_pDisplay)
-            return;
-
-        ImGui::Text("Name: %s", p_pDisplay->GetName().c_str());
-        if (!p_pDisplay->GetNextDisplay().empty())
-            ImGui::Text("Next: %s", p_pDisplay->GetNextDisplay().c_str());
-        ImGui::Separator();
-
         if (auto pSolid = dynamic_cast<CSolidColorDisplay *>(p_pDisplay))
         {
             ImGui::Text("Type: solid");
@@ -135,13 +127,45 @@ public:
             ImGui::Text("Scale: %u", pGLSL->GetScale());
         }
 #endif
-        else if (auto pMulti = dynamic_cast<CMultiDisplay *>(p_pDisplay))
+        else if (dynamic_cast<CMultiDisplay *>(p_pDisplay))
         {
             ImGui::Text("Type: multi-display");
         }
         else
         {
             ImGui::Text("Type: unknown");
+        }
+    }
+
+    void ShowDisplayInfo(CQC2SDisplay *p_pDisplay)
+    {
+        if (!p_pDisplay)
+            return;
+
+        if (auto pMulti = dynamic_cast<CMultiDisplay *>(p_pDisplay))
+        {
+            // ── Multi-display: tree of children ─────────────────
+            for (size_t i = 0; i < pMulti->GetDisplayCount(); ++i)
+            {
+                CQC2SDisplay *pChild = pMulti->GetDisplay(i);
+                bool open = ImGui::TreeNode(pChild->GetName().c_str());
+                if (open)
+                {
+                    ImGui::Text("Next: %s", pChild->GetNextDisplay().empty()
+                        ? "(stop)" : pChild->GetNextDisplay().c_str());
+                    ShowDisplayOptions(pChild);
+                    ImGui::TreePop();
+                }
+            }
+        }
+        else
+        {
+            // ── Single display ──────────────────────────────────
+            ImGui::Text("Name: %s", p_pDisplay->GetName().c_str());
+            if (!p_pDisplay->GetNextDisplay().empty())
+                ImGui::Text("Next: %s", p_pDisplay->GetNextDisplay().c_str());
+            ImGui::Separator();
+            ShowDisplayOptions(p_pDisplay);
         }
     }
 
@@ -199,7 +223,7 @@ public:
             ImGui::Text("Device ID: %s", m_config.m_audioDeviceId.has_value()
                 ? std::to_string(*m_config.m_audioDeviceId).c_str() : "default");
             ImGui::Text("Channel: %s", m_config.m_audioChannel.has_value()
-                ? std::to_string(*m_config.m_audioChannel).c_str() : "0 (left)");
+                ? std::to_string(*m_config.m_audioChannel).c_str() : "0");
             ImGui::End();
 
             auto continueDisplaying = m_renderer.PollEvents();

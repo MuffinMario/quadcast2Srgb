@@ -22,6 +22,10 @@ public:
     CMultiDisplay(String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_firstDisplay = "")
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_firstDisplay)) {}
 
+    size_t GetDisplayCount() const { return m_displays.size(); }
+    CQC2SDisplay *GetDisplay(size_t p_index) { return m_displays[p_index].get(); }
+    const CQC2SDisplay *GetDisplay(size_t p_index) const { return m_displays[p_index].get(); }
+
     void AddDisplay(UniquePtr<CQC2SDisplay> p_display)
     {
         // add to map
