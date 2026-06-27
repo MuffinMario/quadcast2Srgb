@@ -333,7 +333,10 @@ public:
             ss << " --display solid --color " << ColorToHex(pSolid->GetColor());
         else if (auto pPulse = dynamic_cast<CPulseColorDisplay *>(p_pDisplay))
             ss << " --display pulse --color " << ColorToHex(pPulse->GetColor())
-               << " --pulse-speed " << pPulse->GetSpeed();
+               << " --pulse-speed " << pPulse->GetSpeed()
+               << " --pulse-cubic-bezier "
+               << pPulse->GetBezier().m_p1x << " " << pPulse->GetBezier().m_p1y << " "
+               << pPulse->GetBezier().m_p2x << " " << pPulse->GetBezier().m_p2y;
         else if (auto pRainbow = dynamic_cast<CRainbowDisplay *>(p_pDisplay))
         {
             const char *pMode = "flat";
@@ -364,7 +367,10 @@ public:
                     ss << ",";
                 ss << ColorToHex(colors[i].ToRGB());
             }
-            ss << " --transition-speed " << pTransition->GetSpeed();
+            ss << " --transition-speed " << pTransition->GetSpeed()
+               << " --transition-cubic-bezier "
+               << pTransition->GetBezier().m_p1x << " " << pTransition->GetBezier().m_p1y << " "
+               << pTransition->GetBezier().m_p2x << " " << pTransition->GetBezier().m_p2y;
         }
         else if (auto pVideo = dynamic_cast<CVideoDisplay *>(p_pDisplay))
             ss << " --display video --video-framerate " << pVideo->GetFPS();
