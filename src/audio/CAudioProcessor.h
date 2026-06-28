@@ -59,10 +59,14 @@ class CAudioProcessor
     void ProcessFFT();
 
 public:
+    /// Enumerate all PortAudio audio devices and return their details as a vector.
+    /// Call before Initialize() or after Shutdown() (PortAudio must not be active).
+    /// The returned vector is empty on error.
+    static DynamicContainer<SAudioDeviceInfo> GetDevices();
+
     /// Enumerate all PortAudio audio devices and log their details.
     /// Prints device ID, name, host API, max input/output channels,
-    /// and default sample rate.  Call before Initialize() or after Shutdown()
-    /// (PortAudio must not be active).
+    /// and default sample rate.  Delegates to GetDevices() internally.
     static void PrintDevices();
 
     CAudioProcessor() = default;

@@ -7,6 +7,25 @@
 
 #include "../Common.h"
 
+/// Describes a single PortAudio device for enumeration purposes.
+struct SAudioDeviceInfo
+{
+    // PortAudio device index.
+    int m_deviceId;               
+    // Human-readable device name.
+    String m_name;                
+    // Host API name (e.g. "ALSA", "PulseAudio").
+    String m_hostApiName;         
+    // Maximum number of input channels.
+    int m_maxInputChannels;       
+    // Maximum number of output channels.
+    int m_maxOutputChannels;      
+    // Default sample rate in Hz.
+    double m_defaultSampleRate;   
+    // True if this is the default input device.
+    bool m_isDefaultInput;        
+};
+
 /// Holds the result of an FFT applied to a captured audio frame.
 /// Normalized amplitudes per frequency band, plus capture metadata.
 struct SAudioSpectrum

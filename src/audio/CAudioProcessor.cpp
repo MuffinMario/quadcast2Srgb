@@ -136,53 +136,80 @@ void CAudioProcessor::ProcessFFT()
 
 // ── Device enumeration ─────────────────────────────────────────────────────────
 
-void CAudioProcessor::PrintDevices()
+DynamicContainer<SAudioDeviceInfo> CAudioProcessor::GetDevices()
 {
+    DynamicContainer<SAudioDeviceInfo> devices;
+
     PaError paErr = Pa_Initialize();
     if (paErr != paNoError)
     {
         LOG_ERROR(L"CAudioProcessor: Pa_Initialize failed during device listing: "
                   << WStr(Pa_GetErrorText(paErr)));
-        return;
+        return devices;
     }
 
-    PaDeviceIndex defaultInput  = Pa_GetDefaultInputDevice();
-    PaDeviceIndex defaultOutput = Pa_GetDefaultOutputDevice();
-    PaDeviceIndex numDevices    = Pa_GetDeviceCount();
+    PaDeviceIndex defaultInput = Pa_GetDefaultInputDevice();
+    PaDeviceIndex numDevices   = Pa_GetDeviceCount();
 
     if (numDevices < 0)
     {
         LOG_ERROR(L"CAudioProcessor: Pa_GetDeviceCount returned error");
         Pa_Terminate();
-        return;
+        return devices;
     }
 
-    LOG(L"--- PortAudio Devices (" << numDevices << L" total) ---");
+    devices.reserve(static_cast<size_t>(numDevices));
 
     for (PaDeviceIndex i = 0; i < numDevices; ++i)
     {
         const PaDeviceInfo *pInfo = Pa_GetDeviceInfo(i);
         if (!pInfo)
-        {
-            LOG(L"  " << i << L"  (null device info)");
             continue;
-        }
 
         const PaHostApiInfo *pHostApi = Pa_GetHostApiInfo(pInfo->hostApi);
+
+        SAudioDeviceInfo info;
+        info.m_deviceId          = static_cast<int>(i);
+        info.m_name              = pInfo->name ? String(pInfo->name) : String("(unnamed)");
+        info.m_hostApiName       = pHostApi && pHostApi->name ? String(pHostApi->name) : String("?");
+        info.m_maxInputChannels  = pInfo->maxInputChannels;
+        info.m_maxOutputChannels = pInfo->maxOutputChannels;
+        info.m_defaultSampleRate = pInfo->defaultSampleRate;
+        info.m_isDefaultInput    = (i == defaultInput);
+
+        devices.push_back(std::move(info));
+    }
+
+    Pa_Terminate();
+    return devices;
+}
+
+void CAudioProcessor::PrintDevices()
+{
+    auto devices = GetDevices();
+
+    if (devices.empty())
+    {
+        LOG(L"--- No PortAudio devices found. ---");
+        return;
+    }
+
+    LOG(L"--- PortAudio Devices (" << devices.size() << L" total) ---");
+
+    for (const auto &d : devices)
+    {
         StringStream ss;
-        ss << "  " << i;
-        if (i == defaultInput)  ss << " [default in]";
-        if (i == defaultOutput) ss << " [default out]";
-        ss << "  \"" << pInfo->name << "\""
-           << "  API=" << (pHostApi ? pHostApi->name : "?")
-           << "  in="  << pInfo->maxInputChannels
-           << "  out=" << pInfo->maxOutputChannels
-           << "  rate=" << pInfo->defaultSampleRate;
+        ss << "  " << d.m_deviceId;
+        if (d.m_isDefaultInput)
+            ss << " [default in]";
+        ss << "  \"" << d.m_name << "\""
+           << "  API=" << d.m_hostApiName
+           << "  in="  << d.m_maxInputChannels
+           << "  out=" << d.m_maxOutputChannels
+           << "  rate=" << d.m_defaultSampleRate;
         LOG(WStr(ss.str()));
     }
     LOG(L"---");
-
-    Pa_Terminate();
 }
 
 // ── Public interface ───────────────────────────────────────────────────────────

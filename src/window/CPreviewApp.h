@@ -32,6 +32,9 @@ class CPreviewApp
     DynamicContainer<char> m_cmdBuffer;
     bool m_restartRequested = false;
     String m_pendingType;
+    DynamicContainer<SAudioDeviceInfo> m_audioDevices;
+    DynamicContainer<String> m_audioDeviceNames;  // combo labels, cached alongside m_audioDevices
+    bool m_audioDevicesCached = false;
 
 public:
     CPreviewApp(SProgramConfig p_config)
@@ -655,6 +658,7 @@ public:
                 ImGui::SeparatorText("Audio");
                 if (ImGui::Checkbox("Capture Audio", &m_config.m_enableAudio))
                 {
+                    m_audioDevicesCached = false; // refresh device list on toggle
                     auto &audioOn = m_config.m_enableAudio;
                     // audio processor is off -> turn on
                     if (audioOn)
@@ -687,14 +691,109 @@ public:
                     }
                 }
                 ImGui::BeginDisabled(!m_config.m_enableAudio);
-                ImGui::Checkbox("Smoothing", &m_config.m_audioSmoothing);
-                // TODO: on change of these two -> update if audio processor is enabled
-                ImGui::SliderFloat("Smoothing Alpha", &m_config.m_audioSmoothingAlpha, 0.0f, 1.0f, "%.3f");
-                ImGui::SliderFloat("Input Gain", &m_config.m_inputGain, 0.0f, 100.0f, "%.1f");
-                if (m_config.m_audioDeviceId.has_value())
-                    ImGui::Text("Device ID: %d", *m_config.m_audioDeviceId);
-                else
-                    ImGui::Text("Device ID: default");
+                if (ImGui::Checkbox("Smoothing", &m_config.m_audioSmoothing))
+                {
+                    if (m_audioProcessor.IsInitialized())
+                        m_audioProcessor.SetSmoothing(m_config.m_audioSmoothing, m_config.m_audioSmoothingAlpha);
+                }
+                ImGui::SetItemTooltip("Smooth the volume bands by using EMA");
+                if (ImGui::SliderFloat("Smoothing Alpha", &m_config.m_audioSmoothingAlpha, 0.0f, 1.0f, "%.3f"))
+                {
+                    if (m_audioProcessor.IsInitialized())
+                        m_audioProcessor.SetSmoothing(m_config.m_audioSmoothing, m_config.m_audioSmoothingAlpha);
+                }
+                ImGui::SetItemTooltip("The smoothing factor of the bands. The smaller the more gradual the transition.");
+                if (ImGui::SliderFloat("Input Gain", &m_config.m_inputGain, 0.0f, 100.0f, "%.1f"))
+                {
+                    if (m_audioProcessor.IsInitialized())
+                        m_audioProcessor.SetInputGain(m_config.m_inputGain);
+                }
+
+                // ── Refresh device cache if dirty ─────────────────
+                if (!m_audioDevicesCached)
+                {
+                    auto audioDevices = CAudioProcessor::GetDevices();
+                    m_audioDevices.clear();
+                    std::copy_if(
+                        audioDevices.begin(),
+                        audioDevices.end(),
+                        std::back_inserter(m_audioDevices),
+                        [](const SAudioDeviceInfo& p_device) {return p_device.m_maxInputChannels > 0;}
+                    );
+
+                    // Build combo labels: [0] = "Default (auto)", [1..N] = devices
+                    m_audioDeviceNames.clear();
+                    m_audioDeviceNames.reserve(m_audioDevices.size() + 1);
+                    m_audioDeviceNames.push_back("Default (auto)");
+                    for (const auto &d : m_audioDevices)
+                    {
+                        StringStream ss;
+                        ss << d.m_deviceId << ": " << d.m_name << " (" << d.m_hostApiName << ")";
+                        m_audioDeviceNames.push_back(ss.str());
+                    }
+
+                    m_audioDevicesCached = true;
+                }
+
+                // ── Device combo ────────────────────────────────────
+                {
+                    // Build a C-string array from cached labels (cheap, no formatting)
+                    DynamicContainer<const char *> items;
+                    items.reserve(m_audioDeviceNames.size());
+                    for (const auto &n : m_audioDeviceNames)
+                        items.push_back(n.c_str());
+
+                    // Determine current selection index
+                    int selIdx = 0;
+                    if (m_config.m_audioDeviceId.has_value())
+                    {
+                        int target = *m_config.m_audioDeviceId;
+                        for (size_t i = 0; i < m_audioDevices.size(); ++i)
+                        {
+                            if (m_audioDevices[i].m_deviceId == target)
+                            {
+                                selIdx = static_cast<int>(i + 1);
+                                break;
+                            }
+                        }
+                    }
+
+                    ImGui::SetNextItemWidth(-1);
+                    if (ImGui::Combo("Device", &selIdx, items.data(), static_cast<int>(items.size())))
+                    {
+                        Option<int> newDeviceId;
+                        if (selIdx > 0)
+                            newDeviceId = m_audioDevices[static_cast<size_t>(selIdx - 1)].m_deviceId;
+
+                        if (newDeviceId != m_config.m_audioDeviceId)
+                        {
+                            // Shutdown audio if running, update device id, restart
+                            bool wasInitialized = m_audioProcessor.IsInitialized();
+                            if (wasInitialized)
+                            {
+                                m_audioProcessor.Shutdown();
+                                m_config.m_pDisplay->SetAudioProcessor(nullptr);
+                            }
+
+                            m_config.m_audioDeviceId = newDeviceId;
+
+                            if (wasInitialized)
+                            {
+                                if (!m_audioProcessor.Initialize(1024, m_config.m_audioDeviceId, m_config.m_audioChannel))
+                                {
+                                    LOG("[CPreviewApp] Failed to re-initialize audio processor after device change.");
+                                }
+                                else
+                                {
+                                    m_audioProcessor.SetInputGain(m_config.m_inputGain);
+                                    m_audioProcessor.SetSmoothing(m_config.m_audioSmoothing, m_config.m_audioSmoothingAlpha);
+                                    m_config.m_pDisplay->SetAudioProcessor(&m_audioProcessor);
+                                }
+                            }
+                        }
+                        ImGui::SetItemTooltip("May not list up all devices, as it only shows the devices with input channels!");
+                    }
+                }
                 if (m_config.m_audioChannel.has_value())
                     ImGui::Text("Channel: %d", *m_config.m_audioChannel);
                 else
