@@ -20,9 +20,9 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateMultiDisplay(String p_name, U
     return std::make_unique<CMultiDisplay>(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
 }
 
-UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateVideoDisplay(VideoFrameBuffer p_frames, uint32_t p_fps, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay)
+UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateVideoDisplay(String p_videoPath, EVideoFormat p_format, uint32_t p_fps, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay)
 {
-    return std::make_unique<CVideoDisplay>(std::move(p_frames), p_fps, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
+    return std::make_unique<CVideoDisplay>(std::move(p_videoPath), p_format, p_fps, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
 }
 
 UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateRainbow(ERainbowMode p_mode, double p_rotSpeed, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay)

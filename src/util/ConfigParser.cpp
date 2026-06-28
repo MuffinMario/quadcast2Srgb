@@ -8,7 +8,6 @@
 #include "ArgParsing.h"
 #include "../display/CMultiDisplay.h"
 #include "../display/CEndCondition.h"
-#include "../video/VideoProcessing.h"
 
 #include <stdexcept>
 
@@ -213,12 +212,8 @@ UniquePtr<CQC2SDisplay> CConfigParser::ParseSingleDisplay(const toml::table &p_d
         else if (colors != "rgb")
             throw std::runtime_error("Unknown video-colors value: '" + colors + "'");
 
-        VideoFrameBuffer frames = LoadVideoBuffer(videoPath, format);
-        if (frames.empty())
-            throw std::runtime_error("Video file contains no frames: " + videoPath);
-
-        auto endCondition = ParseEndCondition(p_displayTable, &frames);
-        return CQC2SDisplayFactory::CreateVideoDisplay(std::move(frames), fps, name, std::move(endCondition), nextDisplay);
+        auto endCondition = ParseEndCondition(p_displayTable, nullptr);
+        return CQC2SDisplayFactory::CreateVideoDisplay(std::move(videoPath), format, fps, name, std::move(endCondition), nextDisplay);
     }
 
 #ifdef USE_GLSL

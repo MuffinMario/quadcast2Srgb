@@ -102,6 +102,9 @@ file(GLOB IMGUI_SOURCES
 )
 list(APPEND PREVIEW_SOURCES ${IMGUI_SOURCES})
 
+# ImGuiFileDialog — file picker dialog for ImGui
+list(APPEND PREVIEW_SOURCES "${CMAKE_SOURCE_DIR}/external/ImGuiFileDialog/ImGuiFileDialog.cpp")
+
 add_executable(${PROJECT_NAME} ${HW_SOURCES})
 
 target_compile_options(${PROJECT_NAME} PRIVATE

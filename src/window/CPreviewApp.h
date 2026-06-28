@@ -15,12 +15,14 @@
 #include "../display/CVideoDisplay.h"
 #ifdef USE_GLSL
 #include "../display/CGLSLDisplay.h"
+#include "../../external/ImGuiFileDialog/ImGuiFileDialog.h"
 #endif
 #include "../display/CMultiDisplay.h"
 #include "../display/CQC2SDisplayFactory.h"
 #include "../display/ColorTypes.h"
 #include "imgui.h"
 #include <cstdio>
+#include <filesystem>
 
 /// Manages the preview window, display loop, and ImGui UI.
 /// Run() blocks until the window is closed or the display ends.
@@ -33,8 +35,9 @@ class CPreviewApp
     bool m_restartRequested = false;
     String m_pendingType;
     DynamicContainer<SAudioDeviceInfo> m_audioDevices;
-    DynamicContainer<String> m_audioDeviceNames;  // combo labels, cached alongside m_audioDevices
+    DynamicContainer<String> m_audioDeviceNames; // combo labels, cached alongside m_audioDevices
     bool m_audioDevicesCached = false;
+    std::filesystem::file_time_type m_cachedShaderMtime = std::filesystem::file_time_type::min();
 
 public:
     CPreviewApp(SProgramConfig p_config)
@@ -232,14 +235,12 @@ public:
     {
         if (auto pSolid = dynamic_cast<CSolidColorDisplay *>(p_pDisplay))
         {
-            ImGui::Text("Type: solid");
             SRGBColor color = pSolid->GetColor();
             if (ShowColorPicker("Color", color))
                 pSolid->SetColor(color);
         }
         else if (auto pPulse = dynamic_cast<CPulseColorDisplay *>(p_pDisplay))
         {
-            ImGui::Text("Type: pulse");
             SRGBColor color = pPulse->GetColor();
             if (ShowColorPicker("Color", color))
                 pPulse->SetColor(color);
@@ -255,7 +256,6 @@ public:
         }
         else if (auto pRainbow = dynamic_cast<CRainbowDisplay *>(p_pDisplay))
         {
-            ImGui::Text("Type: rainbow");
 
             // ── Mode combo ────────────────────
             const char *rainbowModes[] = {"Flat", "Rolling Vertical", "Rolling Horizontal", "Rolling Diagonal"};
@@ -274,7 +274,6 @@ public:
         }
         else if (auto pTransition = dynamic_cast<CColorTransitionDisplay *>(p_pDisplay))
         {
-            ImGui::Text("Type: transition");
 
             // ── Speed ────────────────────────
             float speed = pTransition->GetSpeed();
@@ -318,25 +317,90 @@ public:
         }
         else if (auto pVideo = dynamic_cast<CVideoDisplay *>(p_pDisplay))
         {
-            ImGui::Text("Type: video");
-            ImGui::Text("FPS: %u", pVideo->GetFPS());
+            // ── Video path ──────────────────
+            {
+                constexpr size_t PATH_BUF_SIZE = 512;
+                char pathBuf[PATH_BUF_SIZE] = {};
+                String curPath = pVideo->GetVideoPath();
+                std::copy_n(curPath.begin(), std::min(curPath.size(), PATH_BUF_SIZE - 1), pathBuf);
+
+                const float BROWSE_W = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - BROWSE_W - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::InputText("##videoPath", pathBuf, PATH_BUF_SIZE, ImGuiInputTextFlags_ReadOnly);
+                ImGui::SameLine();
+                if (ImGui::Button("Browse"))
+                {
+                    IGFD::FileDialogConfig config;
+                    config.path = curPath.empty() ? "." : curPath;
+                    ImGuiFileDialog::Instance()->OpenDialog("VideoFile", "Choose Video File", ".rgbffmpeg,.*", config);
+                }
+                if (ImGuiFileDialog::Instance()->Display("VideoFile", ImGuiWindowFlags_NoCollapse, ImVec2(300, 250)))
+                {
+                    if (ImGuiFileDialog::Instance()->IsOk())
+                    {
+                        String filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+                        pVideo->SetVideoPath(filePathName);
+                        pVideo->Initialize();
+                    }
+                    ImGuiFileDialog::Instance()->Close();
+                }
+            }
+
+            // ── Format ────────────────────────
+            {
+                int fmt = (pVideo->GetFormat() == EVideoFormat::Rgb) ? 0 : 1;
+                if (ImGui::RadioButton("RGB", &fmt, 0)) { pVideo->SetFormat(EVideoFormat::Rgb); pVideo->Initialize(); }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("Greyscale", &fmt, 1)) { pVideo->SetFormat(EVideoFormat::Greyscale); pVideo->Initialize(); }
+            }
+
+            // ── FPS ─────────────────────────
+            int fps = static_cast<int>(pVideo->GetFPS());
+            if (ImGui::SliderInt("FPS", &fps, 1, 60))
+                pVideo->SetFPS(static_cast<uint32_t>(fps));
+
             ImGui::Text("Frames: %zu", pVideo->GetFrameCount());
         }
 #ifdef USE_GLSL
         else if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(p_pDisplay))
         {
-            ImGui::Text("Type: glsl");
-
             // ── Shader path ──────────────────
-            constexpr size_t PATH_BUF_SIZE = 512;
-            char pathBuf[PATH_BUF_SIZE] = {};
-            String curPath = pGLSL->GetShaderPath();
-            std::copy_n(curPath.begin(), std::min(curPath.size(), PATH_BUF_SIZE - 1), pathBuf);
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::InputText("Shader Path", pathBuf, PATH_BUF_SIZE))
-                pGLSL->SetShaderPath(pathBuf);
-            ImGui::SameLine();
-            if (ImGui::Button("Reload"))
+            {
+                constexpr size_t PATH_BUF_SIZE = 512;
+                char pathBuf[PATH_BUF_SIZE] = {};
+                String curPath = pGLSL->GetShaderPath();
+                std::copy_n(curPath.begin(), std::min(curPath.size(), PATH_BUF_SIZE - 1), pathBuf);
+
+                const float BROWSE_W = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - BROWSE_W - ImGui::GetStyle().ItemSpacing.x);
+                ImGui::InputText("##shaderPath", pathBuf, PATH_BUF_SIZE, ImGuiInputTextFlags_ReadOnly);
+                ImGui::SameLine();
+                if (ImGui::Button("Browse"))
+                {
+                    IGFD::FileDialogConfig config;
+                    config.path = curPath.empty() ? "." : curPath;
+
+                    ImGuiFileDialog::Instance()->OpenDialog("GLSLShaderFile", "Choose GLSL Shader", ".glsl,.frag,.txt,.*", config);
+                }
+                if (ImGuiFileDialog::Instance()->Display("GLSLShaderFile", ImGuiWindowFlags_NoCollapse, ImVec2(300, 250)))
+                {
+                    if (ImGuiFileDialog::Instance()->IsOk())
+                    {
+                        String filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+                        pGLSL->SetShaderPath(filePathName);
+
+#ifdef USE_GLSL
+                        if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(m_config.m_pDisplay.get()))
+                            pGLSL->Initialize();
+#endif
+                    }
+                    ImGuiFileDialog::Instance()->Close();
+                }
+            }
+
+            // ── Reload + Auto-reload ────────
+            ImGui::Checkbox("Auto Recompile on Change", &m_config.m_glslAutoReload);
+            if (ImGui::Button("Recompile"))
                 pGLSL->Initialize();
 
             // ── FPS ─────────────────────────
@@ -347,11 +411,15 @@ public:
                 ImGui::SetTooltip("Affects the preview window frame rate as well");
 
             // ── Scale ───────────────────────
-            // bug: window renderer on scale > 4 is not correct
+            
             int scale = static_cast<int>(pGLSL->GetScale());
-            if (ImGui::SliderInt("Scale", &scale, 1, 8))
+            if (ImGui::SliderInt("Superscale", &scale, 1, 50))
+            {
                 pGLSL->SetScale(static_cast<uint32_t>(scale));
+                // needs to recompile since fbo info has changed
+                pGLSL->Initialize();
             }
+        }
 #endif
         else if (dynamic_cast<CMultiDisplay *>(p_pDisplay))
         {
@@ -403,7 +471,7 @@ public:
             return CQC2SDisplayFactory::CreateColorTransition(std::move(colors), 0.005f, p_type);
         }
         if (p_type == "video")
-            return CQC2SDisplayFactory::CreateSolidColor(DEFAULT_COLOR, "solid"); // fallback
+            return CQC2SDisplayFactory::CreateVideoDisplay("", EVideoFormat::Rgb, 30, p_type);
 #ifdef USE_GLSL
         if (p_type == "glsl")
             return CQC2SDisplayFactory::CreateGLSLDisplay("", 30, 1, p_type, nullptr, "", true);
@@ -468,7 +536,7 @@ public:
                 ss << " --audio-smoothing-alpha " << m_config.m_audioSmoothingAlpha;
             if (m_config.m_audioDeviceId.has_value())
                 ss << " --audio-device-id " << *m_config.m_audioDeviceId;
-            if (m_config.m_audioChannel.has_value())
+            if (m_config.m_audioChannel.has_value() && *m_config.m_audioChannel != 0)
                 ss << " --audio-channel " << *m_config.m_audioChannel;
         }
 
@@ -527,7 +595,8 @@ public:
                << pTransition->GetBezier().m_p2x << " " << pTransition->GetBezier().m_p2y;
         }
         else if (auto pVideo = dynamic_cast<CVideoDisplay *>(p_pDisplay))
-            ss << " --display video --video-framerate " << pVideo->GetFPS();
+            ss << " --display video --video-path " << pVideo->GetVideoPath()
+               << " --video-framerate " << pVideo->GetFPS();
 #ifdef USE_GLSL
         else if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(p_pDisplay))
             ss << " --display glsl --shader-path " << pGLSL->GetShaderPath()
@@ -553,6 +622,15 @@ public:
         {
             m_restartRequested = false;
 
+            /* There is a clear problem with callback-based rendering
+                We solely rely on the displays ability to display. Sure, one issue is when setting fps
+                to a low number the response time goes down... But the main problem here is that
+                when the primary display's Display()/DisplayFrame() returns false, we practically exit the tool.
+                Yes, this is mainly a preview tool, but the user might lose their configuration if something messes up.
+                TODO/WIP!
+            */
+           // TODO: Remember that when multi-display is implemented, final exit condition (none/nonexistent display)
+           //       should be replaced with the initial display!
             auto callback = [&](CIRenderer &)
             {
                 m_renderer.NewFrame();
@@ -571,7 +649,7 @@ public:
                 if (!isMulti)
                 {
                     String currentType = GetDisplayTypeName(m_config.m_pDisplay.get());
-                    const char *types[] = {"solid", "pulse", "rainbow", "transition"
+                    const char *types[] = {"solid", "pulse", "rainbow", "transition", "video"
 #ifdef USE_GLSL
                                            ,
                                            "glsl"
@@ -594,18 +672,53 @@ public:
                 ShowDisplayInfo(m_config.m_pDisplay.get());
                 ImGui::End();
 
-                ImGui::Begin("Shader");
-                ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-                if (ImGui::Button("Reload"))
-                {
+                // ── Auto-reload GLSL shader when file changes ─────
 #ifdef USE_GLSL
+                if (m_config.m_glslAutoReload)
+                {
                     if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(m_config.m_pDisplay.get()))
-                        pGLSL->Initialize();
-#endif
+                    {
+                        String shaderPath = pGLSL->GetShaderPath();
+                        if (!shaderPath.empty())
+                        {
+                            std::error_code ec;
+                            auto mtime = std::filesystem::last_write_time(shaderPath, ec);
+                            if (!ec)
+                            {
+                                if (mtime != m_cachedShaderMtime)
+                                {
+                                    m_cachedShaderMtime = mtime;
+                                    pGLSL->Initialize();
+                                }
+                            }
+                        }
+                    }
                 }
+                else
+                {
+                    // Reset cache when auto-reload is off so it re-triggers when turned on
+                    m_cachedShaderMtime = std::filesystem::file_time_type::min();
+                }
+#endif
+
+                ImGui::Begin("Info");
+                ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+                if(m_config.m_enableAudio && m_audioProcessor.IsInitialized())
+                {
+                    auto spectrum = m_audioProcessor.GetSpectrum();
+                    ImGui::Text("Max Audio Band Volume: %.1f",spectrum.m_maxBand);
+                }
+#ifdef USE_GLSL
+                if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(m_config.m_pDisplay.get()))
+                {
+                    uint32_t scale = pGLSL->GetScale();
+                    ImGui::Text("GL Render Viewport: %u x %u (%u pixel)", g_VIDEO_WIDTH * scale, g_VIDEO_HEIGHT * scale,g_VIDEO_WIDTH * scale * g_VIDEO_HEIGHT * scale);
+                }
+#endif
                 ImGui::End();
 
                 ImGui::Begin("Command Line");
+
                 if (isMulti)
                 {
                     // if its multi dont display anything meaningful
@@ -641,6 +754,7 @@ public:
                 ImGui::Begin("General");
                 ImGui::Checkbox("Verbose logging", &m_config.m_verbose);
                 ImGui::Checkbox("Skip device response", &m_config.m_noWaitForRead);
+                ImGui::SetItemTooltip("This enables potential higher FPS, but risks overloading the device with requests.\nDon't use this unless you really need to (probably not). The preview does not simulate USB transactions and thus cannot be tested here!\nUSE AT YOUR OWN RISK!");
                 if (m_config.m_allowedSerials.has_value() && !m_config.m_allowedSerials->empty())
                 {
                     ImGui::Text("Allowed serials:");
@@ -718,8 +832,8 @@ public:
                         audioDevices.begin(),
                         audioDevices.end(),
                         std::back_inserter(m_audioDevices),
-                        [](const SAudioDeviceInfo& p_device) {return p_device.m_maxInputChannels > 0;}
-                    );
+                        [](const SAudioDeviceInfo &p_device)
+                        { return p_device.m_maxInputChannels > 0; });
 
                     // Build combo labels: [0] = "Default (auto)", [1..N] = devices
                     m_audioDeviceNames.clear();
@@ -758,7 +872,9 @@ public:
                         }
                     }
 
-                    ImGui::SetNextItemWidth(-1);
+                    const float DEVICE_W = ImGui::CalcTextSize("Device").x;
+
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - DEVICE_W - ImGui::GetStyle().ItemSpacing.x);
                     if (ImGui::Combo("Device", &selIdx, items.data(), static_cast<int>(items.size())))
                     {
                         Option<int> newDeviceId;
@@ -776,6 +892,7 @@ public:
                             }
 
                             m_config.m_audioDeviceId = newDeviceId;
+                            m_config.m_audioChannel.reset(); // reset channel to 0 on device change
 
                             if (wasInitialized)
                             {
@@ -791,13 +908,76 @@ public:
                                 }
                             }
                         }
-                        ImGui::SetItemTooltip("May not list up all devices, as it only shows the devices with input channels!");
+                    }
+                    ImGui::SetItemTooltip("Only shows the devices with capturable input channels.");
+                }
+                // ── Channel number ───────────────────────────────────
+                {
+                    // Determine max input channels for the currently selected device
+                    int maxChannels = 0;
+                    if (m_config.m_audioDeviceId.has_value())
+                    {
+                        int target = *m_config.m_audioDeviceId;
+                        for (const auto &d : m_audioDevices)
+                        {
+                            if (d.m_deviceId == target)
+                            {
+                                maxChannels = d.m_maxInputChannels;
+                                break;
+                            }
+                        }
+                    }
+                    // At minimum offer channel 0 (mono default)
+                    int numChannels = maxChannels > 0 ? maxChannels : 1;
+
+                    // Build channel labels
+                    DynamicContainer<String> channelLabels;
+                    channelLabels.reserve(static_cast<size_t>(numChannels));
+                    for (int i = 0; i < numChannels; ++i)
+                    {
+                        char buf[16];
+                        snprintf(buf, sizeof(buf), "%d", i);
+                        channelLabels.push_back(buf);
+                    }
+                    DynamicContainer<const char *> channelItems;
+                    channelItems.reserve(channelLabels.size());
+                    for (const auto &l : channelLabels)
+                        channelItems.push_back(l.c_str());
+
+                    int channel = m_config.m_audioChannel.value_or(0);
+                    if (ImGui::Combo("Channel", &channel, channelItems.data(), static_cast<int>(channelItems.size())))
+                    {
+                        channel = std::clamp(channel, 0, maxChannels > 0 ? maxChannels - 1 : 0);
+                        if (channel != m_config.m_audioChannel.value_or(0))
+                        {
+                            bool wasInitialized = m_audioProcessor.IsInitialized();
+                            if (wasInitialized)
+                            {
+                                m_audioProcessor.Shutdown();
+                                m_config.m_pDisplay->SetAudioProcessor(nullptr);
+                            }
+
+                            if (channel == 0)
+                                m_config.m_audioChannel.reset();
+                            else
+                                m_config.m_audioChannel = channel;
+
+                            if (wasInitialized)
+                            {
+                                if (!m_audioProcessor.Initialize(1024, m_config.m_audioDeviceId, m_config.m_audioChannel))
+                                {
+                                    LOG("[CPreviewApp] Failed to re-initialize audio processor after channel change.");
+                                }
+                                else
+                                {
+                                    m_audioProcessor.SetInputGain(m_config.m_inputGain);
+                                    m_audioProcessor.SetSmoothing(m_config.m_audioSmoothing, m_config.m_audioSmoothingAlpha);
+                                    m_config.m_pDisplay->SetAudioProcessor(&m_audioProcessor);
+                                }
+                            }
+                        }
                     }
                 }
-                if (m_config.m_audioChannel.has_value())
-                    ImGui::Text("Channel: %d", *m_config.m_audioChannel);
-                else
-                    ImGui::Text("Channel: 0");
                 ImGui::EndDisabled();
                 ImGui::End();
 

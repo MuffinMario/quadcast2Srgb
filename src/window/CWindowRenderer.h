@@ -167,7 +167,7 @@ public:
         m_pWindow = SDL_CreateWindow("qc2srgb-preview",
                                      SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                      g_WINDOW_W, g_WINDOW_H,
-                                     SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+                                     SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
         if (!m_pWindow)
         {
             LOG_ERROR(L"CWindowRenderer: SDL_CreateWindow failed: " << WStr(SDL_GetError()));

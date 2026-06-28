@@ -8,7 +8,6 @@
 #include "../util/ArgParsing.h"
 #include "../util/ConfigParser.h"
 #include "../display/CQC2SDisplayFactory.h"
-#include "../video/VideoProcessing.h"
 #include "../Globals.h"
 
 // =============================================================================
@@ -167,21 +166,7 @@ UniquePtr<CQC2SDisplay> CreateDisplayFromArgs(const SDisplayArgs &p_args)
             LOG_ERROR(L"--display video requires --video-path <path>. Defaulting to default color.");
             return CQC2SDisplayFactory::CreateSolidColor({0x29, 0x00, 0x66}, "solid");
         }
-        try
-        {
-            auto frames = LoadVideoBuffer(p_args.m_videoPath, p_args.m_videoFormat);
-            if (frames.empty())
-            {
-                LOG_ERROR(L"Video file loaded but contains no frames: " << WStr(p_args.m_videoPath) << L". Defaulting to default color.");
-                return CQC2SDisplayFactory::CreateSolidColor({0x29, 0x00, 0x66}, "solid");
-            }
-            return CQC2SDisplayFactory::CreateVideoDisplay(std::move(frames), p_args.m_videoFramerate, "video");
-        }
-        catch (const std::exception &e)
-        {
-            LOG_ERROR(L"Failed to load video file '" << WStr(p_args.m_videoPath) << L"': " << WStr(e.what()) << L". Defaulting to default color.");
-            return CQC2SDisplayFactory::CreateSolidColor({0x29, 0x00, 0x66}, "solid");
-        }
+        return CQC2SDisplayFactory::CreateVideoDisplay(p_args.m_videoPath, p_args.m_videoFormat, p_args.m_videoFramerate, "video");
     }
 
 #ifdef USE_GLSL

@@ -40,4 +40,9 @@ struct SProgramConfig
 
     // ── Startup display ───────────────────────────────────────────────────
     UniquePtr<CQC2SDisplay> m_pDisplay;
+
+#if defined(PREVIEW_WINDOW_BINARY) && defined(USE_GLSL)
+    // ── GLSL shader display (preview-only) ─────────────────────────────────
+    bool m_glslAutoReload = false;
+#endif
 };
