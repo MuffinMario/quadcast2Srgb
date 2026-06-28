@@ -103,12 +103,17 @@ public:
 
         if (ImGui::BeginPopupModal(p_pLabel, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
+            // Work on a local copy so Cancel discards changes.
+            static SCubicBezier s_bezier; // persisted across frames while popup is open
+            if (ImGui::IsWindowAppearing())
+                s_bezier = p_bezier;
+
             const float SIZE = 200.f;
             const float DOT_RADIUS = 6.f;
             const ImVec2 ORIGIN = ImGui::GetCursorScreenPos();
 
             // Reserve graph space first so drag overlays don't affect layout.
-            ImGui::Dummy(ImVec2(SIZE+DOT_RADIUS, SIZE)); // dot radius needs to be added since it may go out of the graph, y does not need it
+            ImGui::Dummy(ImVec2(SIZE+DOT_RADIUS, SIZE));
 
             ImDrawList *pDraw = ImGui::GetWindowDrawList();
 
@@ -127,15 +132,15 @@ public:
             // Point helpers
             auto scr = [&](float p_x, float p_y) { return ImVec2(ORIGIN.x + p_x * SIZE, ORIGIN.y + (1.f - p_y) * SIZE); };
             auto drawPt = [&](ImVec2 p_pt, ImU32 p_col) { pDraw->AddCircleFilled(p_pt, DOT_RADIUS-1.f, p_col); pDraw->AddCircle(p_pt, DOT_RADIUS, IM_COL32_WHITE); };
+            auto drawPtOutline = [&](ImVec2 p_pt, ImU32 p_col) { pDraw->AddCircle(p_pt, DOT_RADIUS, IM_COL32_WHITE); };
 
             // Fixed endpoints
-            drawPt(scr(0.f, 0.f), IM_COL32(255, 0, 0, 255));
-            drawPt(scr(1.f, 1.f), IM_COL32(255, 0, 0, 255));
+            drawPtOutline(scr(0.f, 0.f), IM_COL32(255, 0, 0, 255));
+            drawPtOutline(scr(1.f, 1.f), IM_COL32(255, 0, 0, 255));
 
-            // Draggable control points — overlay invisible buttons on the reserved area.
-            // Save/restore cursor so the dots don't affect subsequent widget placement.
-            ImVec2 p1 = scr(p_bezier.m_p1x, p_bezier.m_p1y);
-            ImVec2 p2 = scr(p_bezier.m_p2x, p_bezier.m_p2y);
+            // Draggable control points on the local copy
+            ImVec2 p1 = scr(s_bezier.m_p1x, s_bezier.m_p1y);
+            ImVec2 p2 = scr(s_bezier.m_p2x, s_bezier.m_p2y);
             ImVec2 cursorSave = ImGui::GetCursorPos();
 
             auto drag = [&](ImVec2 &p_pt, float &p_outX, float &p_outY, const char *p_pId)
@@ -149,36 +154,64 @@ public:
                     p_pt.y += ImGui::GetIO().MouseDelta.y;
                     p_outX = std::clamp((p_pt.x - ORIGIN.x) / SIZE, 0.f, 1.f);
                     p_outY = std::clamp(1.f - (p_pt.y - ORIGIN.y) / SIZE, 0.f, 1.f);
-                    p_pt = scr(p_outX, p_outY); // snap to clamped position
+                    p_pt = scr(p_outX, p_outY);
                 }
                 ImGui::PopID();
             };
 
-            drag(p1, p_bezier.m_p1x, p_bezier.m_p1y, "p1");
-            drag(p2, p_bezier.m_p2x, p_bezier.m_p2y, "p2");
+            drag(p1, s_bezier.m_p1x, s_bezier.m_p1y, "p1");
+            drag(p2, s_bezier.m_p2x, s_bezier.m_p2y, "p2");
 
             ImGui::SetCursorPos(cursorSave);
 
-            // ── Draw everything after input (consistent positions) ──
+            // Draw control points and lines
             drawPt(p1, IM_COL32(0, 255, 0, 255));
             drawPt(p2, IM_COL32(0, 128, 255, 255));
             pDraw->AddLine(scr(0.f, 0.f), p1, IM_COL32(0, 255, 0, 128));
             pDraw->AddLine(scr(1.f, 1.f), p2, IM_COL32(0, 128, 255, 128));
 
-            // Bezier curve (sampled)
+            // Bezier curve (sampled from local copy)
             for (int i = 0; i < 50; ++i)
             {
                 float t0 = i / 50.f, t1 = (i + 1) / 50.f;
-                float bx0 = CubicBezierEval(p_bezier, t0);
-                float bx1 = CubicBezierEval(p_bezier, t1);
-                float by0 = t0, by1 = t1;
-                ImVec2 a = scr(bx0, by0), b = scr(bx1, by1);
+                float y0 = CubicBezierEval(s_bezier, t0);
+                float y1 = CubicBezierEval(s_bezier, t1);
+                ImVec2 a = scr(t0, y0), b = scr(t1, y1);
                 pDraw->AddLine(a, b, IM_COL32(255, 255, 0, 255), 2.f);
             }
 
             ImGui::Spacing();
-            if (ImGui::Button("Close"))
+            ImGui::SeparatorText("Presets");
+
+            auto presetBtn = [&](const char *p_pName, float p_p1x, float p_p1y, float p_p2x, float p_p2y)
+            {
+                if (ImGui::Button(p_pName))
+                {
+                    s_bezier.m_p1x = p_p1x; s_bezier.m_p1y = p_p1y;
+                    s_bezier.m_p2x = p_p2x; s_bezier.m_p2y = p_p2y;
+                }
+            };
+
+            int btnCount = 0;
+            auto sep = [&] { if (++btnCount % 3 != 0) ImGui::SameLine(); };
+
+            // https://easings.net/
+            presetBtn("Linear",          0.0f,  0.0f, 1.0f,  1.0f); sep();
+            presetBtn("Ease In",         0.32f, 0.0f, 0.67f, 0.0f); sep();
+            presetBtn("Ease Out",        0.33f, 1.0f, 0.68f, 1.0f); sep();
+
+            ImGui::Spacing();
+            ImGui::Separator();
+
+            if (ImGui::Button("Set"))
+            {
+                p_bezier = s_bezier;
                 ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+                ImGui::CloseCurrentPopup();
+
             ImGui::EndPopup();
         }
     }
@@ -230,9 +263,46 @@ public:
         else if (auto pTransition = dynamic_cast<CColorTransitionDisplay *>(p_pDisplay))
         {
             ImGui::Text("Type: transition");
-            ImGui::Text("Colors: %zu", pTransition->GetColors().size());
-            ImGui::Text("Speed: %.4f", pTransition->GetSpeed());
-            ShowBezier("Bezier", pTransition->GetBezier());
+
+            // ── Speed ────────────────────────
+            float speed = pTransition->GetSpeed();
+            ImGui::SliderFloat("Speed", &speed, 0.0001f, 0.05f, "%.4f");
+            pTransition->SetSpeed(speed);
+
+            // ── Bezier ───────────────────────
+            SCubicBezier bezier = pTransition->GetBezier();
+            ImGui::Text("Bezier: (%.2f, %.2f) -> (%.2f, %.2f)",
+                        bezier.m_p1x, bezier.m_p1y,
+                        bezier.m_p2x, bezier.m_p2y);
+            ShowBezierEditor("Transition Bezier", bezier);
+            pTransition->SetBezier(bezier);
+
+            // ── Color list ───────────────────
+            const auto &colors = pTransition->GetColors();
+            int removeIdx = -1;
+            for (size_t i = 0; i < colors.size(); ++i)
+            {
+                ImGui::PushID(static_cast<int>(i));
+                SRGBColor rgb = colors[i].ToRGB();
+                char label[32];
+                snprintf(label, sizeof(label), "Color %zu", i + 1);
+                if (ShowColorPicker(label, rgb))
+                    pTransition->SetColor(i, SHSV::FromRGB(rgb));
+                ImGui::SameLine();
+                if (ImGui::Button("-") && colors.size() > 2)
+                    removeIdx = static_cast<int>(i);
+                ImGui::PopID();
+            }
+            if (removeIdx >= 0)
+                pTransition->RemoveColor(static_cast<size_t>(removeIdx));
+            if (ImGui::Button("+ Add Color"))
+            {
+                // pick a hue offset from the last color for variety
+                float hue = 0.0f;
+                if (!colors.empty())
+                    hue = std::fmod(colors.back().m_hue + 60.0, 360.0);
+                pTransition->AddColor(SHSV{hue, 1.0, 1.0});
+            }
         }
         else if (auto pVideo = dynamic_cast<CVideoDisplay *>(p_pDisplay))
         {

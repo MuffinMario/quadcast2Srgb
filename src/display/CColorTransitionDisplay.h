@@ -37,8 +37,13 @@ public:
     {}
 
     const DynamicContainer<SHSV> &GetColors() const { return m_colors; }
+    void AddColor(SHSV p_color) { m_colors.push_back(p_color); }
+    void RemoveColor(size_t p_idx) { if (m_colors.size() > 2 && p_idx < m_colors.size()) m_colors.erase(m_colors.begin() + static_cast<ptrdiff_t>(p_idx)); }
+    void SetColor(size_t p_idx, const SHSV &p_color) { if (p_idx < m_colors.size()) m_colors[static_cast<ptrdiff_t>(p_idx)] = p_color; }
     float                         GetSpeed()  const { return m_speed; }
+    void                          SetSpeed(float p_speed) { m_speed = p_speed; }
     SCubicBezier                  GetBezier() const { return m_bezier; }
+    void                          SetBezier(const SCubicBezier &p_bezier) { m_bezier = p_bezier; }
 
     void Reset() override
     {
