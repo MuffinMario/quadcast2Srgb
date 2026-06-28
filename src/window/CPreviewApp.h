@@ -84,12 +84,12 @@ public:
 
     static bool ShowColorPicker(const char *p_pLabel, SRGBColor &p_color)
     {
-        float col[3] = { p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f };
+        float col[3] = {p_color.m_red / 255.f, p_color.m_green / 255.f, p_color.m_blue / 255.f};
         if (ImGui::ColorEdit3(p_pLabel, col))
         {
-            p_color = { static_cast<uint8_t>(col[0] * 255.f),
-                        static_cast<uint8_t>(col[1] * 255.f),
-                        static_cast<uint8_t>(col[2] * 255.f) };
+            p_color = {static_cast<uint8_t>(col[0] * 255.f),
+                       static_cast<uint8_t>(col[1] * 255.f),
+                       static_cast<uint8_t>(col[2] * 255.f)};
             return true;
         }
         return false;
@@ -113,7 +113,7 @@ public:
             const ImVec2 ORIGIN = ImGui::GetCursorScreenPos();
 
             // Reserve graph space first so drag overlays don't affect layout.
-            ImGui::Dummy(ImVec2(SIZE+DOT_RADIUS, SIZE));
+            ImGui::Dummy(ImVec2(SIZE + DOT_RADIUS, SIZE));
 
             ImDrawList *pDraw = ImGui::GetWindowDrawList();
 
@@ -130,9 +130,12 @@ public:
             }
 
             // Point helpers
-            auto scr = [&](float p_x, float p_y) { return ImVec2(ORIGIN.x + p_x * SIZE, ORIGIN.y + (1.f - p_y) * SIZE); };
-            auto drawPt = [&](ImVec2 p_pt, ImU32 p_col) { pDraw->AddCircleFilled(p_pt, DOT_RADIUS-1.f, p_col); pDraw->AddCircle(p_pt, DOT_RADIUS, IM_COL32_WHITE); };
-            auto drawPtOutline = [&](ImVec2 p_pt, ImU32 p_col) { pDraw->AddCircle(p_pt, DOT_RADIUS, IM_COL32_WHITE); };
+            auto scr = [&](float p_x, float p_y)
+            { return ImVec2(ORIGIN.x + p_x * SIZE, ORIGIN.y + (1.f - p_y) * SIZE); };
+            auto drawPt = [&](ImVec2 p_pt, ImU32 p_col)
+            { pDraw->AddCircleFilled(p_pt, DOT_RADIUS-1.f, p_col); pDraw->AddCircle(p_pt, DOT_RADIUS, IM_COL32_WHITE); };
+            auto drawPtOutline = [&](ImVec2 p_pt, ImU32 p_col)
+            { pDraw->AddCircle(p_pt, DOT_RADIUS, IM_COL32_WHITE); };
 
             // Fixed endpoints
             drawPtOutline(scr(0.f, 0.f), IM_COL32(255, 0, 0, 255));
@@ -187,18 +190,24 @@ public:
             {
                 if (ImGui::Button(p_pName))
                 {
-                    s_bezier.m_p1x = p_p1x; s_bezier.m_p1y = p_p1y;
-                    s_bezier.m_p2x = p_p2x; s_bezier.m_p2y = p_p2y;
+                    s_bezier.m_p1x = p_p1x;
+                    s_bezier.m_p1y = p_p1y;
+                    s_bezier.m_p2x = p_p2x;
+                    s_bezier.m_p2y = p_p2y;
                 }
             };
 
             int btnCount = 0;
-            auto sep = [&] { if (++btnCount % 3 != 0) ImGui::SameLine(); };
+            auto sep = [&]
+            { if (++btnCount % 3 != 0) ImGui::SameLine(); };
 
             // https://easings.net/
-            presetBtn("Linear",          0.0f,  0.0f, 1.0f,  1.0f); sep();
-            presetBtn("Ease In",         0.32f, 0.0f, 0.67f, 0.0f); sep();
-            presetBtn("Ease Out",        0.33f, 1.0f, 0.68f, 1.0f); sep();
+            presetBtn("Linear", 0.0f, 0.0f, 1.0f, 1.0f);
+            sep();
+            presetBtn("Ease In", 0.32f, 0.0f, 0.67f, 0.0f);
+            sep();
+            presetBtn("Ease Out", 0.33f, 1.0f, 0.68f, 1.0f);
+            sep();
 
             ImGui::Spacing();
             ImGui::Separator();
@@ -256,7 +265,7 @@ public:
             float absSpeed = static_cast<float>(std::abs(pRainbow->GetSpeed()));
             if (ImGui::SliderFloat("Speed (°/frame)", &absSpeed, 0.0f, 30.0f, "%.1f"))
                 pRainbow->SetSpeed(invert ? -static_cast<double>(absSpeed) : static_cast<double>(absSpeed));
-            //ImGui::SameLine();
+            // ImGui::SameLine();
             if (ImGui::Checkbox("Invert Rainbow Direction", &invert))
                 pRainbow->SetSpeed(invert ? -static_cast<double>(absSpeed) : static_cast<double>(absSpeed));
         }
@@ -331,12 +340,15 @@ public:
             int fps = static_cast<int>(pGLSL->GetFPS());
             if (ImGui::SliderInt("FPS", &fps, 1, 60))
                 pGLSL->SetFPS(static_cast<uint32_t>(fps));
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Affects the preview window frame rate as well");
 
             // ── Scale ───────────────────────
+            // bug: window renderer on scale > 4 is not correct
             int scale = static_cast<int>(pGLSL->GetScale());
             if (ImGui::SliderInt("Scale", &scale, 1, 8))
                 pGLSL->SetScale(static_cast<uint32_t>(scale));
-        }
+            }
 #endif
         else if (dynamic_cast<CMultiDisplay *>(p_pDisplay))
         {
@@ -350,15 +362,23 @@ public:
 
     static String GetDisplayTypeName(CQC2SDisplay *p_pDisplay)
     {
-        if (!p_pDisplay) return "";
-        if (dynamic_cast<CSolidColorDisplay *>(p_pDisplay))      return "solid";
-        if (dynamic_cast<CPulseColorDisplay *>(p_pDisplay))      return "pulse";
-        if (dynamic_cast<CRainbowDisplay *>(p_pDisplay))         return "rainbow";
-        if (dynamic_cast<CColorTransitionDisplay *>(p_pDisplay)) return "transition";
-        if (dynamic_cast<CVideoDisplay *>(p_pDisplay))           return "video";
-        if (dynamic_cast<CMultiDisplay *>(p_pDisplay))           return "multi";
+        if (!p_pDisplay)
+            return "";
+        if (dynamic_cast<CSolidColorDisplay *>(p_pDisplay))
+            return "solid";
+        if (dynamic_cast<CPulseColorDisplay *>(p_pDisplay))
+            return "pulse";
+        if (dynamic_cast<CRainbowDisplay *>(p_pDisplay))
+            return "rainbow";
+        if (dynamic_cast<CColorTransitionDisplay *>(p_pDisplay))
+            return "transition";
+        if (dynamic_cast<CVideoDisplay *>(p_pDisplay))
+            return "video";
+        if (dynamic_cast<CMultiDisplay *>(p_pDisplay))
+            return "multi";
 #ifdef USE_GLSL
-        if (dynamic_cast<CGLSLDisplay *>(p_pDisplay))            return "glsl";
+        if (dynamic_cast<CGLSLDisplay *>(p_pDisplay))
+            return "glsl";
 #endif
         return "";
     }
@@ -437,10 +457,12 @@ public:
         if (m_config.m_enableAudio)
         {
             ss << " --capture-audio";
-            ss << " --input-gain " << m_config.m_inputGain;
+            if (m_config.m_inputGain != 50.0f)
+                ss << " --input-gain " << m_config.m_inputGain;
             if (!m_config.m_audioSmoothing)
                 ss << " --no-audio-smoothing";
-            ss << " --audio-smoothing-alpha " << m_config.m_audioSmoothingAlpha;
+            if (m_config.m_audioSmoothingAlpha != 0.15f)
+                ss << " --audio-smoothing-alpha " << m_config.m_audioSmoothingAlpha;
             if (m_config.m_audioDeviceId.has_value())
                 ss << " --audio-device-id " << *m_config.m_audioDeviceId;
             if (m_config.m_audioChannel.has_value())
@@ -529,146 +551,187 @@ public:
             m_restartRequested = false;
 
             auto callback = [&](CIRenderer &)
-        {
-            m_renderer.NewFrame();
-
-            // ── Docking layout ───────────────────────────────────
-            ImGui::DockSpaceOverViewport();
-
-            ImGui::Begin("LED Grid");
-            ImVec2 avail = ImGui::GetContentRegionAvail();
-            ImGui::Image(m_renderer.GetGridTexture(), avail,
-                         ImVec2(0, 1), ImVec2(1, 0)); // flip Y
-            ImGui::End();
-
-            ImGui::Begin("Display");
-            bool isMulti = dynamic_cast<CMultiDisplay *>(m_config.m_pDisplay.get()) != nullptr;
-            if (!isMulti)
             {
-                String currentType = GetDisplayTypeName(m_config.m_pDisplay.get());
-                const char *types[] = {"solid", "pulse", "rainbow", "transition"
-#ifdef USE_GLSL
-                    , "glsl"
-#endif
-                };
-                int typeIdx = -1;
-                for (int i = 0; i < IM_ARRAYSIZE(types); ++i)
-                    if (currentType == types[i]) { typeIdx = i; break; }
-                if (ImGui::Combo("Type", &typeIdx, types, IM_ARRAYSIZE(types)))
+                m_renderer.NewFrame();
+
+                // ── Docking layout ───────────────────────────────────
+                ImGui::DockSpaceOverViewport();
+
+                ImGui::Begin("LED Grid");
+                ImVec2 avail = ImGui::GetContentRegionAvail();
+                ImGui::Image(m_renderer.GetGridTexture(), avail,
+                             ImVec2(0, 1), ImVec2(1, 0)); // flip Y
+                ImGui::End();
+
+                ImGui::Begin("Display");
+                bool isMulti = dynamic_cast<CMultiDisplay *>(m_config.m_pDisplay.get()) != nullptr;
+                if (!isMulti)
                 {
-                    m_pendingType = types[typeIdx];
-                    m_restartRequested = true;
+                    String currentType = GetDisplayTypeName(m_config.m_pDisplay.get());
+                    const char *types[] = {"solid", "pulse", "rainbow", "transition"
+#ifdef USE_GLSL
+                                           ,
+                                           "glsl"
+#endif
+                    };
+                    int typeIdx = -1;
+                    for (int i = 0; i < IM_ARRAYSIZE(types); ++i)
+                        if (currentType == types[i])
+                        {
+                            typeIdx = i;
+                            break;
+                        }
+                    if (ImGui::Combo("Type", &typeIdx, types, IM_ARRAYSIZE(types)))
+                    {
+                        m_pendingType = types[typeIdx];
+                        m_restartRequested = true;
+                        g_signalStopRequest = true;
+                    }
+                }
+                ShowDisplayInfo(m_config.m_pDisplay.get());
+                ImGui::End();
+
+                ImGui::Begin("Shader");
+                ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+                if (ImGui::Button("Reload"))
+                {
+#ifdef USE_GLSL
+                    if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(m_config.m_pDisplay.get()))
+                        pGLSL->Initialize();
+#endif
+                }
+                ImGui::End();
+
+                ImGui::Begin("Command Line");
+                if (isMulti)
+                {
+                    // if its multi dont display anything meaningful
+                    String cmd = "---";
+                    m_cmdBuffer.assign(cmd.begin(), cmd.end());
+                    m_cmdBuffer.push_back('\0');
+                }
+                else
+                {
+                    String cmd = BuildCommandLine();
+                    m_cmdBuffer.assign(cmd.begin(), cmd.end());
+                    m_cmdBuffer.push_back('\0');
+                }
+
+                // stretch input text field to grow with window size, subtract its size by round about the button on the same row
+                const float BUTTON_W = ImGui::CalcTextSize("Copy").x + ImGui::GetStyle().FramePadding.x * 2;
+                const float GOAL_INPUT_WIDTH = ImGui::GetContentRegionAvail().x - BUTTON_W - ImGui::GetStyle().ItemSpacing.x;
+                ImGui::SetNextItemWidth(GOAL_INPUT_WIDTH);
+                ImGui::InputText("##cmd", m_cmdBuffer.data(), m_cmdBuffer.size(),
+                                 ImGuiInputTextFlags_ReadOnly);
+
+                // copy button, disable if multi display
+                ImGui::SameLine();
+                if (isMulti)
+                    ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+                if (ImGui::Button("Copy"))
+                {
+                    String cmd(m_cmdBuffer.begin(), m_cmdBuffer.end());
+                    ImGui::SetClipboardText(cmd.c_str());
+                }
+                ImGui::End();
+
+                ImGui::Begin("General");
+                ImGui::Checkbox("Verbose logging", &m_config.m_verbose);
+                ImGui::Checkbox("Skip device response", &m_config.m_noWaitForRead);
+                if (m_config.m_allowedSerials.has_value() && !m_config.m_allowedSerials->empty())
+                {
+                    ImGui::Text("Allowed serials:");
+                    for (const auto &serial : *m_config.m_allowedSerials)
+                    {
+                        String narrow(serial.begin(), serial.end());
+                        ImGui::Text("  %s", narrow.c_str());
+                    }
+                }
+                else
+                {
+                    ImGui::Text("Allowed serials: all");
+                }
+
+                ImGui::SeparatorText("Audio");
+                if (ImGui::Checkbox("Capture Audio", &m_config.m_enableAudio))
+                {
+                    auto &audioOn = m_config.m_enableAudio;
+                    // audio processor is off -> turn on
+                    if (audioOn)
+                    {
+                        if (m_audioProcessor.IsInitialized())
+                            LOG("[CPreviewApp] WARNING: Audio is already on");
+                        else
+                        {
+                            if (!m_audioProcessor.Initialize(1024, m_config.m_audioDeviceId, m_config.m_audioChannel))
+                            {
+                                LOG("[CPreviewApp] Failed to initialize audio processor.");
+                            }
+                            else
+                            {
+                                m_audioProcessor.SetInputGain(m_config.m_inputGain);
+                                m_audioProcessor.SetSmoothing(m_config.m_audioSmoothing, m_config.m_audioSmoothingAlpha);
+                                m_config.m_pDisplay->SetAudioProcessor(&m_audioProcessor);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (!m_audioProcessor.IsInitialized())
+                            LOG("[CPreviewApp] WARNING: Audio is NOT initialized");
+                        else
+                        {
+                            m_audioProcessor.Shutdown();
+                            m_config.m_pDisplay->SetAudioProcessor(nullptr);
+                        }
+                    }
+                }
+                ImGui::BeginDisabled(!m_config.m_enableAudio);
+                ImGui::Checkbox("Smoothing", &m_config.m_audioSmoothing);
+                // TODO: on change of these two -> update if audio processor is enabled
+                ImGui::SliderFloat("Smoothing Alpha", &m_config.m_audioSmoothingAlpha, 0.0f, 1.0f, "%.3f");
+                ImGui::SliderFloat("Input Gain", &m_config.m_inputGain, 0.0f, 100.0f, "%.1f");
+                if (m_config.m_audioDeviceId.has_value())
+                    ImGui::Text("Device ID: %d", *m_config.m_audioDeviceId);
+                else
+                    ImGui::Text("Device ID: default");
+                if (m_config.m_audioChannel.has_value())
+                    ImGui::Text("Channel: %d", *m_config.m_audioChannel);
+                else
+                    ImGui::Text("Channel: 0");
+                ImGui::EndDisabled();
+                ImGui::End();
+
+                auto continueDisplaying = m_renderer.PollEvents();
+                if (!continueDisplaying)
                     g_signalStopRequest = true;
-                }
-            }
-            ShowDisplayInfo(m_config.m_pDisplay.get());
-            ImGui::End();
 
-            ImGui::Begin("Shader");
-            ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-            if (ImGui::Button("Reload"))
+                m_renderer.Present();
+                return continueDisplaying;
+            };
+
+            m_config.m_pDisplay->Display(m_renderer, g_signalStopRequest, std::move(callback));
+
+            if (m_restartRequested && !m_pendingType.empty())
             {
-#ifdef USE_GLSL
-                if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(m_config.m_pDisplay.get()))
-                    pGLSL->Initialize();
-#endif
-            }
-            ImGui::End();
-
-            ImGui::Begin("Command Line");
-            if (isMulti)
-            {
-                // if its multi dont display anything meaningful
-                String cmd = "---";
-                m_cmdBuffer.assign(cmd.begin(), cmd.end());
-                m_cmdBuffer.push_back('\0');
-            }
-            else
-            {
-                String cmd = BuildCommandLine();
-                m_cmdBuffer.assign(cmd.begin(), cmd.end());
-                m_cmdBuffer.push_back('\0');
-            }
-
-
-            // stretch input text field to grow with window size, subtract its size by round about the button on the same row 
-            const float BUTTON_W = ImGui::CalcTextSize("Copy").x + ImGui::GetStyle().FramePadding.x * 2;
-            const float GOAL_INPUT_WIDTH = ImGui::GetContentRegionAvail().x - BUTTON_W - ImGui::GetStyle().ItemSpacing.x;
-            ImGui::SetNextItemWidth(GOAL_INPUT_WIDTH);
-            ImGui::InputText("##cmd", m_cmdBuffer.data(), m_cmdBuffer.size(),
-                             ImGuiInputTextFlags_ReadOnly);
-
-            // copy button, disable if multi display
-            ImGui::SameLine();
-            if(isMulti)
-                ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
-            if (ImGui::Button("Copy"))
-            {
-                String cmd(m_cmdBuffer.begin(),m_cmdBuffer.end());
-                ImGui::SetClipboardText(cmd.c_str());
-            }
-            ImGui::End();
-
-            ImGui::Begin("General");
-            ImGui::Text("Verbose logging: %s", m_config.m_verbose ? "Yes" : "No");
-            ImGui::Text("Skip device response: %s", m_config.m_noWaitForRead ? "Yes" : "No");
-            if (m_config.m_allowedSerials.has_value() && !m_config.m_allowedSerials->empty())
-            {
-                ImGui::Text("Allowed serials:");
-                for (const auto &serial : *m_config.m_allowedSerials)
+                m_config.m_pDisplay->Shutdown(m_renderer);
+                auto pNewDisplay = CreateDefaultDisplay(m_pendingType);
+                if (pNewDisplay)
                 {
-                    String narrow(serial.begin(), serial.end());
-                    ImGui::Text("  %s", narrow.c_str());
+                    m_config.m_pDisplay = std::move(pNewDisplay);
+                    if (m_config.m_enableAudio)
+                        m_config.m_pDisplay->SetAudioProcessor(&m_audioProcessor);
+                    if (!m_config.m_pDisplay->Initialize())
+                    {
+                        LOG_ERROR(L"Failed to initialize new display: " + WStr(m_pendingType));
+                        // fallback to solid
+                        m_config.m_pDisplay = CQC2SDisplayFactory::CreateSolidColor({0x29, 0x00, 0x66}, "solid");
+                        m_config.m_pDisplay->Initialize();
+                    }
+                    g_signalStopRequest = false;
                 }
             }
-            else
-            {
-                ImGui::Text("Allowed serials: all");
-            }
-
-            ImGui::SeparatorText("Audio");
-            ImGui::Text("Capture: %s", m_config.m_enableAudio ? "enabled" : "disabled");
-            ImGui::Text("Smoothing: %s", m_config.m_audioSmoothing ? "Yes" : "No");
-            ImGui::Text("Smoothing alpha: %.3f", m_config.m_audioSmoothingAlpha);
-            ImGui::Text("Input gain: %.1f", m_config.m_inputGain);
-            ImGui::Text("Device ID: %s", m_config.m_audioDeviceId.has_value()
-                                             ? std::to_string(*m_config.m_audioDeviceId).c_str()
-                                             : "default");
-            ImGui::Text("Channel: %s", m_config.m_audioChannel.has_value()
-                                           ? std::to_string(*m_config.m_audioChannel).c_str()
-                                           : "0");
-            ImGui::End();
-
-            auto continueDisplaying = m_renderer.PollEvents();
-            if (!continueDisplaying)
-                g_signalStopRequest = true;
-
-            m_renderer.Present();
-            return continueDisplaying;
-        };
-
-        m_config.m_pDisplay->Display(m_renderer, g_signalStopRequest, std::move(callback));
-
-        if (m_restartRequested && !m_pendingType.empty())
-        {
-            m_config.m_pDisplay->Shutdown(m_renderer);
-            auto pNewDisplay = CreateDefaultDisplay(m_pendingType);
-            if (pNewDisplay)
-            {
-                m_config.m_pDisplay = std::move(pNewDisplay);
-                if (m_config.m_enableAudio)
-                    m_config.m_pDisplay->SetAudioProcessor(&m_audioProcessor);
-                if (!m_config.m_pDisplay->Initialize())
-                {
-                    LOG_ERROR(L"Failed to initialize new display: " + WStr(m_pendingType));
-                    // fallback to solid
-                    m_config.m_pDisplay = CQC2SDisplayFactory::CreateSolidColor({0x29, 0x00, 0x66}, "solid");
-                    m_config.m_pDisplay->Initialize();
-                }
-                g_signalStopRequest = false;
-            }
-        }
-    } while (m_restartRequested && !g_signalStopRequest.load());
+        } while (m_restartRequested && !g_signalStopRequest.load());
     }
 
     void Shutdown()

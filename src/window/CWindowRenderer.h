@@ -18,6 +18,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
 
@@ -30,8 +32,10 @@ class CWindowRenderer : public CIRenderer
     // and separate gap between rectangles (in pixels) (+ wrap around edges)
     static constexpr int g_LED_PIXEL_SIZE = 48;
     static constexpr int g_GRID_GAP = 4;
-    static constexpr int g_WINDOW_W = g_VIDEO_WIDTH * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
-    static constexpr int g_WINDOW_H = g_VIDEO_HEIGHT * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP;
+    static constexpr int g_EXTRA_W = 300;
+    static constexpr int g_EXTRA_H = 250;
+    static constexpr int g_WINDOW_W = g_VIDEO_WIDTH * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP + g_EXTRA_W;
+    static constexpr int g_WINDOW_H = g_VIDEO_HEIGHT * (g_LED_PIXEL_SIZE + g_GRID_GAP) + g_GRID_GAP  + g_EXTRA_H;
 
     SDL_Window *m_pWindow = nullptr;
     SDL_GLContext m_pGLContext = nullptr;
@@ -197,6 +201,29 @@ public:
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         ImGui_ImplSDL2_InitForOpenGL(m_pWindow, m_pGLContext);
         ImGui_ImplOpenGL3_Init("#version 300 es");
+
+        // Load custom font (JetBrains Mono)
+        {
+            const char *pPaths[] = {
+                "/usr/share/fonts/truetype/JetBrainsMono/JetBrainsMono-Regular.ttf",
+                "/usr/share/fonts/TTF/JetBrainsMono-Regular.ttf",
+                "/usr/share/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf",
+            };
+            const char *pHome = getenv("HOME");
+            String homePath;
+            if (pHome)
+            {
+                homePath = String(pHome) + "/.local/share/fonts/JetBrainsMono-Regular.ttf";
+                pPaths[0] = homePath.c_str(); // reuse first slot for ~/.local
+            }
+
+            bool loaded = false;
+            for (const char *pPath : pPaths)
+            {
+                FILE *pFile = fopen(pPath, "rb");
+                if (pFile) { fclose(pFile); io.Fonts->AddFontFromFileTTF(pPath, 14.0f); break; }
+            }
+        }
     }
 
     ~CWindowRenderer() override
