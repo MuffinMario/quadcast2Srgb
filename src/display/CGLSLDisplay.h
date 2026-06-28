@@ -53,6 +53,7 @@ class CGLSLDisplay : public CQC2SDisplay
     String m_shaderPath;
     uint32_t m_fps;
     uint32_t m_resolutionScale = 1;
+    bool m_failSilent = false;
 
 #ifndef PREVIEW_WINDOW_BINARY
     // EGL handles (hardware path only)
@@ -151,16 +152,20 @@ class CGLSLDisplay : public CQC2SDisplay
 
 public:
     CGLSLDisplay(String p_shaderPath, uint32_t p_fps, uint32_t p_resolutionScale, String p_name,
-                 UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay = "")
+                 UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay = "",
+                 bool p_failSilent = false)
         : CQC2SDisplay(std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay)),
           m_shaderPath(std::move(p_shaderPath)), m_fps(p_fps),
-          m_resolutionScale(std::max(1u, p_resolutionScale))
+          m_resolutionScale(std::max(1u, p_resolutionScale)), m_failSilent(p_failSilent)
     {
     }
 
     const String &GetShaderPath() const { return m_shaderPath; }
+    void          SetShaderPath(const String &p_path) { m_shaderPath = p_path; }
     uint32_t      GetFPS()        const { return m_fps; }
+    void          SetFPS(uint32_t p_fps) { m_fps = p_fps; }
     uint32_t      GetScale()      const { return m_resolutionScale; }
+    void          SetScale(uint32_t p_scale) { m_resolutionScale = std::max(1u, p_scale); }
 
     CGLSLDisplay(const CGLSLDisplay &) = delete;
     CGLSLDisplay &operator=(const CGLSLDisplay &) = delete;
@@ -264,9 +269,10 @@ public:
         IFStream shaderFile(m_shaderPath);
         if (!shaderFile.is_open())
         {
-            LOG_ERROR(L"CGLSLDisplay: cannot open shader file: " << WStr(m_shaderPath));
+            if (!m_failSilent)
+                LOG_ERROR(L"CGLSLDisplay: cannot open shader file: " << WStr(m_shaderPath));
             CleanupEGL();
-            return false;
+            return m_failSilent; // failSilent: pretend success, user will set path + Reload later
         }
         StringStream ss;
         ss << shaderFile.rdbuf();
@@ -416,6 +422,10 @@ public:
 
     bool DisplayFrame(CIRenderer &p_renderer) override
     {
+        // failSilent with no shader loaded yet: do nothing
+        if (!m_program)
+            return true;
+
         const auto FRAME_START = std::chrono::steady_clock::now();
         const auto FRAME_DURATION = std::chrono::milliseconds(1000 / m_fps);
 

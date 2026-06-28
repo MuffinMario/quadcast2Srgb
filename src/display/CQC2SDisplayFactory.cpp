@@ -36,9 +36,9 @@ UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateColorTransition(DynamicContai
 }
 
 #ifdef USE_GLSL
-UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateGLSLDisplay(String p_shaderPath, uint32_t p_fps, uint32_t p_resolutionScale, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay)
+UniquePtr<CQC2SDisplay> CQC2SDisplayFactory::CreateGLSLDisplay(String p_shaderPath, uint32_t p_fps, uint32_t p_resolutionScale, String p_name, UniquePtr<CEndCondition> p_pEndCondition, String p_nextDisplay, bool p_failSilent)
 {
-    return std::make_unique<CGLSLDisplay>(std::move(p_shaderPath), p_fps, p_resolutionScale, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay));
+    return std::make_unique<CGLSLDisplay>(std::move(p_shaderPath), p_fps, p_resolutionScale, std::move(p_name), std::move(p_pEndCondition), std::move(p_nextDisplay), p_failSilent);
 }
 #endif
 

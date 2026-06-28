@@ -17,6 +17,7 @@
 #include "../display/CGLSLDisplay.h"
 #endif
 #include "../display/CMultiDisplay.h"
+#include "../display/CQC2SDisplayFactory.h"
 #include "../display/ColorTypes.h"
 #include "imgui.h"
 #include <cstdio>
@@ -29,6 +30,8 @@ class CPreviewApp
     CAudioProcessor m_audioProcessor;
     SProgramConfig m_config;
     DynamicContainer<char> m_cmdBuffer;
+    bool m_restartRequested = false;
+    String m_pendingType;
 
 public:
     CPreviewApp(SProgramConfig p_config)
@@ -208,24 +211,21 @@ public:
         else if (auto pRainbow = dynamic_cast<CRainbowDisplay *>(p_pDisplay))
         {
             ImGui::Text("Type: rainbow");
-            ImGui::Text("Speed: %.1f °/frame", pRainbow->GetSpeed());
-            const char *pModeName = "?";
-            switch (pRainbow->GetMode())
-            {
-            case ERainbowMode::Flat:
-                pModeName = "flat";
-                break;
-            case ERainbowMode::RollingVertical:
-                pModeName = "vertical";
-                break;
-            case ERainbowMode::RollingHorizontal:
-                pModeName = "horizontal";
-                break;
-            case ERainbowMode::RollingDiagonal:
-                pModeName = "diagonal";
-                break;
-            }
-            ImGui::Text("Mode: %s", pModeName);
+
+            // ── Mode combo ────────────────────
+            const char *rainbowModes[] = {"Flat", "Rolling Vertical", "Rolling Horizontal", "Rolling Diagonal"};
+            int modeIdx = static_cast<int>(pRainbow->GetMode());
+            if (ImGui::Combo("Mode", &modeIdx, rainbowModes, IM_ARRAYSIZE(rainbowModes)))
+                pRainbow->SetMode(static_cast<ERainbowMode>(modeIdx));
+
+            // ── Speed slider with invert ──────
+            bool invert = (pRainbow->GetSpeed() < 0.0);
+            float absSpeed = static_cast<float>(std::abs(pRainbow->GetSpeed()));
+            if (ImGui::SliderFloat("Speed (°/frame)", &absSpeed, 0.0f, 30.0f, "%.1f"))
+                pRainbow->SetSpeed(invert ? -static_cast<double>(absSpeed) : static_cast<double>(absSpeed));
+            //ImGui::SameLine();
+            if (ImGui::Checkbox("Invert Rainbow Direction", &invert))
+                pRainbow->SetSpeed(invert ? -static_cast<double>(absSpeed) : static_cast<double>(absSpeed));
         }
         else if (auto pTransition = dynamic_cast<CColorTransitionDisplay *>(p_pDisplay))
         {
@@ -244,9 +244,28 @@ public:
         else if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(p_pDisplay))
         {
             ImGui::Text("Type: glsl");
-            ImGui::Text("Shader: %s", pGLSL->GetShaderPath().c_str());
-            ImGui::Text("FPS: %u", pGLSL->GetFPS());
-            ImGui::Text("Scale: %u", pGLSL->GetScale());
+
+            // ── Shader path ──────────────────
+            constexpr size_t PATH_BUF_SIZE = 512;
+            char pathBuf[PATH_BUF_SIZE] = {};
+            String curPath = pGLSL->GetShaderPath();
+            std::copy_n(curPath.begin(), std::min(curPath.size(), PATH_BUF_SIZE - 1), pathBuf);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputText("Shader Path", pathBuf, PATH_BUF_SIZE))
+                pGLSL->SetShaderPath(pathBuf);
+            ImGui::SameLine();
+            if (ImGui::Button("Reload"))
+                pGLSL->Initialize();
+
+            // ── FPS ─────────────────────────
+            int fps = static_cast<int>(pGLSL->GetFPS());
+            if (ImGui::SliderInt("FPS", &fps, 1, 60))
+                pGLSL->SetFPS(static_cast<uint32_t>(fps));
+
+            // ── Scale ───────────────────────
+            int scale = static_cast<int>(pGLSL->GetScale());
+            if (ImGui::SliderInt("Scale", &scale, 1, 8))
+                pGLSL->SetScale(static_cast<uint32_t>(scale));
         }
 #endif
         else if (dynamic_cast<CMultiDisplay *>(p_pDisplay))
@@ -257,6 +276,46 @@ public:
         {
             ImGui::Text("Type: unknown");
         }
+    }
+
+    static String GetDisplayTypeName(CQC2SDisplay *p_pDisplay)
+    {
+        if (!p_pDisplay) return "";
+        if (dynamic_cast<CSolidColorDisplay *>(p_pDisplay))      return "solid";
+        if (dynamic_cast<CPulseColorDisplay *>(p_pDisplay))      return "pulse";
+        if (dynamic_cast<CRainbowDisplay *>(p_pDisplay))         return "rainbow";
+        if (dynamic_cast<CColorTransitionDisplay *>(p_pDisplay)) return "transition";
+        if (dynamic_cast<CVideoDisplay *>(p_pDisplay))           return "video";
+        if (dynamic_cast<CMultiDisplay *>(p_pDisplay))           return "multi";
+#ifdef USE_GLSL
+        if (dynamic_cast<CGLSLDisplay *>(p_pDisplay))            return "glsl";
+#endif
+        return "";
+    }
+
+    static UniquePtr<CQC2SDisplay> CreateDefaultDisplay(const String &p_type)
+    {
+        constexpr SRGBColor DEFAULT_COLOR{0x29, 0x00, 0x66};
+        if (p_type == "solid")
+            return CQC2SDisplayFactory::CreateSolidColor(DEFAULT_COLOR, p_type);
+        if (p_type == "pulse")
+            return CQC2SDisplayFactory::CreatePulseColor(DEFAULT_COLOR, 0.025f, p_type);
+        if (p_type == "rainbow")
+            return CQC2SDisplayFactory::CreateRainbow(ERainbowMode::Flat, 1.0, p_type);
+        if (p_type == "transition")
+        {
+            DynamicContainer<SHSV> colors;
+            colors.push_back(SHSV::FromRGB(DEFAULT_COLOR));
+            colors.push_back(SHSV::FromRGB({0x4F, 0x31, 0x91}));
+            return CQC2SDisplayFactory::CreateColorTransition(std::move(colors), 0.005f, p_type);
+        }
+        if (p_type == "video")
+            return CQC2SDisplayFactory::CreateSolidColor(DEFAULT_COLOR, "solid"); // fallback
+#ifdef USE_GLSL
+        if (p_type == "glsl")
+            return CQC2SDisplayFactory::CreateGLSLDisplay("", 30, 1, p_type, nullptr, "", true);
+#endif
+        return nullptr;
     }
 
     void ShowDisplayInfo(CQC2SDisplay *p_pDisplay)
@@ -395,7 +454,11 @@ public:
     {
         LOG(L"[CPreviewApp] Starting display with window preview...");
 
-        auto callback = [&](CIRenderer &)
+        do
+        {
+            m_restartRequested = false;
+
+            auto callback = [&](CIRenderer &)
         {
             m_renderer.NewFrame();
 
@@ -409,6 +472,25 @@ public:
             ImGui::End();
 
             ImGui::Begin("Display");
+            bool isMulti = dynamic_cast<CMultiDisplay *>(m_config.m_pDisplay.get()) != nullptr;
+            if (!isMulti)
+            {
+                String currentType = GetDisplayTypeName(m_config.m_pDisplay.get());
+                const char *types[] = {"solid", "pulse", "rainbow", "transition"
+#ifdef USE_GLSL
+                    , "glsl"
+#endif
+                };
+                int typeIdx = -1;
+                for (int i = 0; i < IM_ARRAYSIZE(types); ++i)
+                    if (currentType == types[i]) { typeIdx = i; break; }
+                if (ImGui::Combo("Type", &typeIdx, types, IM_ARRAYSIZE(types)))
+                {
+                    m_pendingType = types[typeIdx];
+                    m_restartRequested = true;
+                    g_signalStopRequest = true;
+                }
+            }
             ShowDisplayInfo(m_config.m_pDisplay.get());
             ImGui::End();
 
@@ -416,12 +498,14 @@ public:
             ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
             if (ImGui::Button("Reload"))
             {
-                // TODO: reload active shader
+#ifdef USE_GLSL
+                if (auto pGLSL = dynamic_cast<CGLSLDisplay *>(m_config.m_pDisplay.get()))
+                    pGLSL->Initialize();
+#endif
             }
             ImGui::End();
 
             ImGui::Begin("Command Line");
-            bool isMulti = dynamic_cast<CMultiDisplay *>(m_config.m_pDisplay.get()) != nullptr;
             if (isMulti)
             {
                 // if its multi dont display anything meaningful
@@ -494,6 +578,27 @@ public:
         };
 
         m_config.m_pDisplay->Display(m_renderer, g_signalStopRequest, std::move(callback));
+
+        if (m_restartRequested && !m_pendingType.empty())
+        {
+            m_config.m_pDisplay->Shutdown(m_renderer);
+            auto pNewDisplay = CreateDefaultDisplay(m_pendingType);
+            if (pNewDisplay)
+            {
+                m_config.m_pDisplay = std::move(pNewDisplay);
+                if (m_config.m_enableAudio)
+                    m_config.m_pDisplay->SetAudioProcessor(&m_audioProcessor);
+                if (!m_config.m_pDisplay->Initialize())
+                {
+                    LOG_ERROR(L"Failed to initialize new display: " + WStr(m_pendingType));
+                    // fallback to solid
+                    m_config.m_pDisplay = CQC2SDisplayFactory::CreateSolidColor({0x29, 0x00, 0x66}, "solid");
+                    m_config.m_pDisplay->Initialize();
+                }
+                g_signalStopRequest = false;
+            }
+        }
+    } while (m_restartRequested && !g_signalStopRequest.load());
     }
 
     void Shutdown()

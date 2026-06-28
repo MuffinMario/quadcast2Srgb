@@ -36,7 +36,9 @@ public:
     }
 
     ERainbowMode GetMode() const { return m_mode; }
+    void         SetMode(ERainbowMode p_mode) { m_mode = p_mode; Reset(); }
     double       GetSpeed() const { return m_rotSpeed; }
+    void         SetSpeed(double p_speed) { m_rotSpeed = p_speed; }
 
     void Reset() override
     {
