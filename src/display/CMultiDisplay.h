@@ -26,6 +26,47 @@ public:
     CQC2SDisplay *GetDisplay(size_t p_index) { return m_displays[p_index].get(); }
     const CQC2SDisplay *GetDisplay(size_t p_index) const { return m_displays[p_index].get(); }
 
+    size_t GetCurrentIndex() const { return m_currentIndex; }
+    String GetCurrentDisplayName() const
+    {
+        if (m_currentIndex < m_displays.size())
+            return m_displays[m_currentIndex]->GetName();
+        return "";
+    }
+
+    void RemoveDisplay(size_t p_index)
+    {
+        if (p_index >= m_displays.size())
+            return;
+        m_displays.erase(m_displays.begin() + static_cast<ptrdiff_t>(p_index));
+    }
+
+    /// Rebuild the name→index map and transition map after child displays
+    /// have been added, removed, or renamed. Call this after any modification
+    /// to keep the internal routing consistent.
+    void RebuildTransitionMap()
+    {
+        m_mapDisplayIndices.clear();
+        for (size_t i = 0; i < m_displays.size(); ++i)
+            m_mapDisplayIndices[m_displays[i]->GetName()] = i;
+
+        m_mapIndexTransitions.assign(m_displays.size(), (size_t)-1);
+        for (size_t i = 0; i < m_displays.size(); ++i)
+        {
+            String next = m_displays[i]->GetNextDisplay();
+            if (!next.empty())
+            {
+                auto it = m_mapDisplayIndices.find(next);
+                if (it != m_mapDisplayIndices.end())
+                    m_mapIndexTransitions[i] = it->second;
+            }
+        }
+
+        // Clamp current index in case the current display was removed
+        if (m_currentIndex >= m_displays.size())
+            m_currentIndex = m_displays.empty() ? (size_t)-1 : 0;
+    }
+
     void AddDisplay(UniquePtr<CQC2SDisplay> p_display)
     {
         // add to map

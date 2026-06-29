@@ -63,8 +63,12 @@ public:
     // ------------------------------------------------------------------------------
 
     virtual String GetName() const { return m_name; }
+    virtual void SetName(const String &p_name) { m_name = p_name; }
     virtual String GetNextDisplay() const { return m_nextDisplay; }
     virtual void SetNextDisplay(String p_nextDisplay) { m_nextDisplay = std::move(p_nextDisplay); }
+
+    virtual CEndCondition *GetEndCondition() const { return m_pEndCondition.get(); }
+    virtual void SetEndCondition(UniquePtr<CEndCondition> p_pEndCondition) { m_pEndCondition = std::move(p_pEndCondition); }
 
     virtual void Display(CIRenderer &p_renderer,
                          const AtomicBool &p_signalStopRequest,

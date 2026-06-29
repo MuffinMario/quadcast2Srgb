@@ -37,6 +37,8 @@ public:
         const auto NOW = std::chrono::steady_clock::now();
         m_endTime = NOW + m_duration;
     }
+
+    std::chrono::milliseconds GetDuration() const { return m_duration; }
 };
 
 class CVideoCompletedEndCondition : public CEndCondition
@@ -72,4 +74,7 @@ public:
             ++m_currentLoopCount;
         }
     }
+
+    int64_t GetLoopCount() const { return m_loopCount; }
+    void SetLoopCount(int64_t p_loopCount) { m_loopCount = p_loopCount; }
 };

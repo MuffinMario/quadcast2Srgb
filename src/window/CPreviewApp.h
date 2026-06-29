@@ -235,8 +235,99 @@ public:
         }
     }
 
+    /// Show configurable end-condition options for a display.
+    /// Supports: None (infinite), Duration (time-based), and Video Loop (for CVideoDisplay).
+    static void ShowEndConditionOptions(CQC2SDisplay *p_pDisplay)
+    {
+        if (!p_pDisplay)
+            return;
+
+        // Determine which end-condition types are available.
+        // Video displays get an extra "Video Loop" option; all others get None / Duration.
+        bool isVideo = dynamic_cast<CVideoDisplay *>(p_pDisplay) != nullptr;
+        const char *pEndTypes[3] = {"None (infinite)", "Duration", "Video Loop"};
+        int endTypeCount = isVideo ? 3 : 2;
+
+        // Detect current end-condition type
+        int endType = 0; // None
+        if (dynamic_cast<CTimeEndCondition *>(p_pDisplay->GetEndCondition()))
+            endType = 1;
+        else if (dynamic_cast<CVideoCompletedEndCondition *>(p_pDisplay->GetEndCondition()))
+            endType = 2;
+
+        ImGui::SeparatorText("End Condition");
+        if (ImGui::Combo("Type", &endType, pEndTypes, endTypeCount))
+        {
+            if (endType == 0)
+                p_pDisplay->SetEndCondition(nullptr);
+            else if (endType == 1)
+                p_pDisplay->SetEndCondition(std::make_unique<CTimeEndCondition>(std::chrono::milliseconds(5000)));
+            else if (endType == 2 && isVideo)
+            {
+                auto pVideo = static_cast<CVideoDisplay *>(p_pDisplay);
+                p_pDisplay->SetEndCondition(
+                    std::make_unique<CVideoCompletedEndCondition>(pVideo->GetFrameCount(), 1));
+            }
+        }
+
+        if (auto pTime = dynamic_cast<CTimeEndCondition *>(p_pDisplay->GetEndCondition()))
+        {
+            float durationSec = static_cast<float>(pTime->GetDuration().count()) / 1000.f;
+            if (ImGui::SliderFloat("Duration (sec)", &durationSec, 0.5f, 120.0f, "%.1f"))
+            {
+                p_pDisplay->SetEndCondition(
+                    std::make_unique<CTimeEndCondition>(
+                        std::chrono::milliseconds(static_cast<int>(durationSec * 1000.f))));
+            }
+        }
+
+        if (auto pVideoEnd = dynamic_cast<CVideoCompletedEndCondition *>(p_pDisplay->GetEndCondition()))
+        {
+            int64_t loops = pVideoEnd->GetLoopCount();
+            if (loops < 0)
+            {
+                // Currently infinite; show "Infinite" in the UI with a toggle
+                bool infinite = true;
+                if (ImGui::Checkbox("Infinite Loop", &infinite))
+                {
+                    if (!infinite)
+                        pVideoEnd->SetLoopCount(1);
+                }
+            }
+            else
+            {
+                int loopInt = static_cast<int>(loops);
+                if (ImGui::SliderInt("Loop Count", &loopInt, 1, 100))
+                    pVideoEnd->SetLoopCount(static_cast<int64_t>(loopInt));
+                ImGui::SameLine();
+                if (ImGui::Button("∞"))
+                    pVideoEnd->SetLoopCount(-1);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Infinite loop");
+            }
+        }
+    }
+
     void ShowDisplayOptions(CQC2SDisplay *p_pDisplay)
     {
+        // Skip name + end condition for multi-display (handled in ShowDisplayInfo)
+        bool isMulti = dynamic_cast<CMultiDisplay *>(p_pDisplay) != nullptr;
+        if (!isMulti)
+        {
+            // ── Name (editable) ──
+            {
+                constexpr size_t NAME_BUF_SIZE = 128;
+                char nameBuf[NAME_BUF_SIZE] = {};
+                String curName = p_pDisplay->GetName();
+                std::copy_n(curName.begin(), std::min(curName.size(), NAME_BUF_SIZE - 1), nameBuf);
+                if (ImGui::InputText("Name", nameBuf, NAME_BUF_SIZE))
+                    p_pDisplay->SetName(nameBuf);
+            }
+
+            // ── End condition ──
+            ShowEndConditionOptions(p_pDisplay);
+        }
+
         if (auto pSolid = dynamic_cast<CSolidColorDisplay *>(p_pDisplay))
         {
             SRGBColor color = pSolid->GetColor();
@@ -427,7 +518,7 @@ public:
 #endif
         else if (dynamic_cast<CMultiDisplay *>(p_pDisplay))
         {
-            ImGui::Text("Type: multi-display");
+            ImGui::Text("Use the Display window tree below to manage child displays.");
         }
         else
         {
@@ -490,18 +581,152 @@ public:
 
         if (auto pMulti = dynamic_cast<CMultiDisplay *>(p_pDisplay))
         {
-            // ── Multi-display: tree of children ─────────────────
+            // ── Currently playing display ───────────────────────
+            String currentName = pMulti->GetCurrentDisplayName();
+            if (!currentName.empty())
+            {
+                ImGui::Text("Playing: %s", currentName.c_str());
+                ImGui::Separator();
+            }
+
+            // ── Child display list ──────────────────────────────
+            size_t removeIdx = (size_t)-1;
             for (size_t i = 0; i < pMulti->GetDisplayCount(); ++i)
             {
                 CQC2SDisplay *pChild = pMulti->GetDisplay(i);
-                bool open = ImGui::TreeNode(pChild->GetName().c_str());
-                if (open)
+                ImGui::PushID(static_cast<int>(i));
+
+                // ── Collapsible header with name + remove ───────
                 {
-                    ImGui::Text("Next: %s", pChild->GetNextDisplay().empty()
-                                                ? "(stop)"
-                                                : pChild->GetNextDisplay().c_str());
-                    ShowDisplayOptions(pChild);
-                    ImGui::TreePop();
+                    constexpr size_t NAME_BUF_SIZE = 128;
+                    char nameBuf[NAME_BUF_SIZE] = {};
+                    String curName = pChild->GetName();
+                    std::copy_n(curName.begin(), std::min(curName.size(), NAME_BUF_SIZE - 1), nameBuf);
+
+                    float remW = ImGui::CalcTextSize("X").x + ImGui::GetStyle().FramePadding.x * 2 + 4;
+                    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - remW - ImGui::GetStyle().ItemSpacing.x);
+                    if (ImGui::InputText("##name", nameBuf, NAME_BUF_SIZE))
+                    {
+                        pChild->SetName(nameBuf);
+                        pMulti->RebuildTransitionMap();
+                    }
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(i == pMulti->GetCurrentIndex());
+                    if (ImGui::Button("X"))
+                        removeIdx = i;
+                    ImGui::EndDisabled();
+                }
+
+                // ── Next display combo ─────────────────────────
+                {
+                    // Build list of possible targets: all children except self + "(stop)"
+                    DynamicContainer<String> targetNames;
+                    DynamicContainer<const char *> targetItems;
+                    targetNames.push_back("(stop)");
+                    targetItems.push_back(targetNames.back().c_str());
+                    int selIdx = 0; // default: stop
+                    for (size_t j = 0; j < pMulti->GetDisplayCount(); ++j)
+                    {
+                        if (j == i) continue;
+                        targetNames.push_back(pMulti->GetDisplay(j)->GetName());
+                        targetItems.push_back(targetNames.back().c_str());
+                        if (pChild->GetNextDisplay() == pMulti->GetDisplay(j)->GetName())
+                            selIdx = static_cast<int>(targetNames.size() - 1);
+                    }
+
+                    if (ImGui::Combo("Next", &selIdx, targetItems.data(), static_cast<int>(targetItems.size())))
+                    {
+                        if (selIdx == 0)
+                            pChild->SetNextDisplay("");
+                        else
+                            pChild->SetNextDisplay(targetNames[static_cast<size_t>(selIdx)]);
+                        pMulti->RebuildTransitionMap();
+                    }
+                }
+
+                // ── End condition ───────────────────────────────
+                ShowEndConditionOptions(pChild);
+
+                // ── Type-specific options ───────────────────────
+                ImGui::Separator();
+                ShowDisplayOptions(pChild);
+
+                ImGui::PopID();
+                ImGui::Spacing();
+            }
+
+            // ── Remove display ──────────────────────────────────
+            if (removeIdx != (size_t)-1)
+            {
+                pMulti->RemoveDisplay(removeIdx);
+                pMulti->RebuildTransitionMap();
+            }
+
+            // ── Add new display ────────────────────────────────
+            ImGui::SeparatorText("Add Display");
+            {
+                static int s_newTypeIdx = 0;
+                const char *addTypes[] = {"solid", "pulse", "rainbow", "transition", "video"
+#ifdef USE_GLSL
+                                          , "glsl"
+#endif
+                };
+                constexpr size_t ADD_NAME_BUF = 64;
+                static char s_newNameBuf[ADD_NAME_BUF] = {};
+
+                ImGui::Combo("Type", &s_newTypeIdx, addTypes, IM_ARRAYSIZE(addTypes));
+                ImGui::InputText("Name", s_newNameBuf, ADD_NAME_BUF);
+
+                if (ImGui::Button("Add"))
+                {
+                    String type = addTypes[s_newTypeIdx];
+                    String name = s_newNameBuf;
+                    if (name.empty())
+                    {
+                        // Auto-generate a unique name
+                        int counter = 1;
+                        do {
+                            char buf[32];
+                            snprintf(buf, sizeof(buf), "%s_%d", type.c_str(), counter++);
+                            name = buf;
+                        } while ([&] {
+                            for (size_t k = 0; k < pMulti->GetDisplayCount(); ++k)
+                                if (pMulti->GetDisplay(k)->GetName() == name) return true;
+                            return false;
+                        }());
+                    }
+
+                    UniquePtr<CQC2SDisplay> pNew;
+                    constexpr SRGBColor DEFAULT_COLOR{0x29, 0x00, 0x66};
+                    if (type == "solid")
+                        pNew = CQC2SDisplayFactory::CreateSolidColor(DEFAULT_COLOR, name);
+                    else if (type == "pulse")
+                        pNew = CQC2SDisplayFactory::CreatePulseColor(DEFAULT_COLOR, 0.025f, name);
+                    else if (type == "rainbow")
+                        pNew = CQC2SDisplayFactory::CreateRainbow(ERainbowMode::Flat, 1.0, name);
+                    else if (type == "transition")
+                    {
+                        DynamicContainer<SHSV> colors;
+                        colors.push_back(SHSV::FromRGB(DEFAULT_COLOR));
+                        colors.push_back(SHSV::FromRGB({0x4F, 0x31, 0x91}));
+                        pNew = CQC2SDisplayFactory::CreateColorTransition(std::move(colors), 0.005f, name);
+                    }
+                    else if (type == "video")
+                        pNew = CQC2SDisplayFactory::CreateVideoDisplay("", EVideoFormat::Rgb, 30, name);
+#ifdef USE_GLSL
+                    else if (type == "glsl")
+                        pNew = CQC2SDisplayFactory::CreateGLSLDisplay("", 30, 1, name, nullptr, "", true);
+#endif
+
+                    if (pNew)
+                    {
+                        pNew->Initialize();
+                        if (m_config.m_enableAudio)
+                            pNew->SetAudioProcessor(&m_audioProcessor);
+                        pMulti->AddDisplay(std::move(pNew));
+                        pMulti->RebuildTransitionMap();
+                        s_newNameBuf[0] = '\0'; // clear for next use
+                    }
                 }
             }
         }
@@ -855,6 +1080,12 @@ public:
 
                 ImGui::Begin("Info");
                 ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+                if (auto pMultiInfo = dynamic_cast<CMultiDisplay *>(m_config.m_pDisplay.get()))
+                {
+                    String curName = pMultiInfo->GetCurrentDisplayName();
+                    if (!curName.empty())
+                        ImGui::Text("Display: %s", curName.c_str());
+                }
                 if(m_config.m_enableAudio && m_audioProcessor.IsInitialized())
                 {
                     auto spectrum = m_audioProcessor.GetSpectrum();
