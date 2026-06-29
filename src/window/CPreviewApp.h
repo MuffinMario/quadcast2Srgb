@@ -781,7 +781,11 @@ public:
 
                     // Hide the tab bar for the Command Line dock (it's a status bar)
                     if (auto *pNode = ImGui::DockBuilderGetNode(dockBottom))
-                        pNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar; // maybe ImGuiDockNodeFlags_HiddenTabBar ?
+                        pNode->LocalFlags |= 
+                            ImGuiDockNodeFlags_NoTabBar // maybe ImGuiDockNodeFlags_HiddenTabBar ?
+                            | ImGuiDockNodeFlags_NoDocking
+                            | ImGuiDockNodeFlags_NoResize
+                            ;
 
                     ImGui::DockBuilderFinish(dockspaceId);
                 }
@@ -928,6 +932,8 @@ public:
                     String cmd(m_cmdBuffer.begin(), m_cmdBuffer.end());
                     ImGui::SetClipboardText(cmd.c_str());
                 }
+                if (isMulti)
+                    ImGui::PopItemFlag();
                 ImGui::End();
 
                 ImGui::Begin("General");
