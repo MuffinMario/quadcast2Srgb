@@ -199,6 +199,7 @@ public:
         ImGuiIO &io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.IniFilename = nullptr; // prevent saving imgui.ini; layout is set programmatically
         ImGui_ImplSDL2_InitForOpenGL(m_pWindow, m_pGLContext);
         ImGui_ImplOpenGL3_Init("#version 300 es");
 

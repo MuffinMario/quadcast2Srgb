@@ -5,6 +5,9 @@
 
 #pragma once
 
+// Must come before any include that pulls in imgui.h
+#define IMGUI_DEFINE_MATH_OPERATORS
+
 #include "CWindowRenderer.h"
 #include "../config/CConfigBuilder.h"
 #include "../audio/CAudioProcessor.h"
@@ -21,6 +24,7 @@
 #include "../display/CQC2SDisplayFactory.h"
 #include "../display/ColorTypes.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include <cstdio>
 #include <filesystem>
 
@@ -740,7 +744,47 @@ public:
                 m_renderer.NewFrame();
 
                 // ── Docking layout ───────────────────────────────────
-                ImGui::DockSpaceOverViewport();
+                ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
+
+                // ── Initialize default docking layout (once, instead of from imgui.ini) ──
+                static bool s_layoutInitialized = false;
+                if (!s_layoutInitialized)
+                {
+                    s_layoutInitialized = true;
+
+                    ImGui::DockBuilderRemoveNode(dockspaceId);
+                    ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+                    ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
+
+                    // Split Y: bottom = Command Line, top = main content
+                    ImGuiID dockBottom, dockMain;
+                    ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Down, 36.0f / 722.0f, &dockBottom, &dockMain);
+
+                    // Split X: right = LED Grid, left = panels
+                    ImGuiID dockRight, dockLeft;
+                    ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Right, 564.0f / 928.0f, &dockRight, &dockLeft);
+
+                    // Split Y (inside left): bottom = Info, top-left = panels
+                    ImGuiID dockInfo, dockTopLeft;
+                    ImGui::DockBuilderSplitNode(dockLeft, ImGuiDir_Down, 106.0f / 684.0f, &dockInfo, &dockTopLeft);
+
+                    // Split Y (inside top-left): bottom = General, top = Display
+                    ImGuiID dockGeneral, dockDisplay;
+                    ImGui::DockBuilderSplitNode(dockTopLeft, ImGuiDir_Down, 266.0f / 576.0f, &dockGeneral, &dockDisplay);
+
+                    // Dock windows
+                    ImGui::DockBuilderDockWindow("LED Grid", dockRight);
+                    ImGui::DockBuilderDockWindow("Display", dockDisplay);
+                    ImGui::DockBuilderDockWindow("General", dockGeneral);
+                    ImGui::DockBuilderDockWindow("Info", dockInfo);
+                    ImGui::DockBuilderDockWindow("Command Line", dockBottom);
+
+                    // Hide the tab bar for the Command Line dock (it's a status bar)
+                    if (auto *pNode = ImGui::DockBuilderGetNode(dockBottom))
+                        pNode->LocalFlags |= ImGuiDockNodeFlags_NoTabBar; // maybe ImGuiDockNodeFlags_HiddenTabBar ?
+
+                    ImGui::DockBuilderFinish(dockspaceId);
+                }
 
                 ImGui::Begin("LED Grid");
                 ImVec2 avail = ImGui::GetContentRegionAvail();
